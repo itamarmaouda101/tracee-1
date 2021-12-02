@@ -115,6 +115,10 @@ func (t *Tracee) processNetEvents() {
 				}
 
 				switch netEventId {
+				case NetDnsRequest:
+					fmt.Println("DNS request")
+				case  NetDnsResponse:
+					fmt.Println("DNS response")
 				case DebugNetSecurityBind:
 					fmt.Printf("%v  %-16s  %-7d  debug_net/security_socket_bind LocalIP: %v, LocalPort: %d, Protocol: %d\n",
 						timeStampObj, comm, hostTid, netaddr.IPFrom16(pkt.LocalIP), pkt.LocalPort, pkt.Protocol)
