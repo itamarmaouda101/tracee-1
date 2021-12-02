@@ -198,6 +198,9 @@ Copyright (C) Aqua Security inc.
 #define DEBUG_NET_UDPV6_DESTROY_SOCK    5
 #define DEBUG_NET_INET_SOCK_SET_STATE   6
 #define DEBUG_NET_TCP_CONNECT           7
+#define NET_DNS_REQUEST                 8
+#define NET_DNS_RESPONSE                9
+
 
 #define CONFIG_SHOW_SYSCALL             1
 #define CONFIG_EXEC_ENV                 2
@@ -506,6 +509,23 @@ typedef struct net_ctx_ext {
     char comm[TASK_COMM_LEN];
     __be16 local_port;
 } net_ctx_ext_t;
+
+typedef struct dns_packet_hdr {
+    unsigned  id:16; //packet id
+    unsigned  QR:1; // specifies whether this message is a query (0), or a response (1)
+    unsigned  Opcode:4; // specifies kind of query in this message. (normally set to 0)
+    unsigned  AA:1; // only meaningful in responses, and specifies that the responding name server is an authority for the domain name in question section
+    unsigned  TC:1; // specifies that this message was truncated
+    unsigned  RD:1; // directs the name server to pursue the query recursively
+    unsigned  RA:1; // this be is set or cleared in a response, and denotes whether recursive query support is available in the name server
+    unsigned  Z:1; //Reserved- should be 0
+    unsigned  RCODE:1; //Response code
+    unsigned int qdcount; //specifying the number of entries in the question section
+    unsigned int ancount; //specifying the number of resource records in the answer section
+    unsigned int nscount; //specifying the number of name server resource records in the authority records section
+    unsigned int arcount; //specifying the number of resource records in the additional records section
+} __attribute__((packed)) dns_packet_hdr_t ;
+
 
 /*=============================== KERNEL STRUCTS =============================*/
 
@@ -4220,6 +4240,41 @@ static __always_inline int tc_probe(struct __sk_buff *skb, bool ingress) {
             }
         }
     }
+    //check if the packet is dns protocol
+    if (get_config(CONFIG_DEBUG_NET)&& pkt.protocol == IPPROTO_UDP && (__bpf_ntohs(pkt.src_port) == 53 || __bpf_ntohs(pkt.dst_port) == 53)) {
+
+            net_debug_t debug_event = {0};
+            debug_event.ts =0;
+            if (!skb_revalidate_data(skb, &head, &tail, l4_hdr_off + sizeof(struct udphdr))) {
+                        return TC_ACT_UNSPEC;
+            }
+
+            struct udphdr *udp = (void *)head + l4_hdr_off;
+            if (!skb_revalidate_data(skb, &head, &tail,sizeof(head)+l4_hdr_off+sizeof(struct udphdr)+sizeof(dns_packet_hdr_t))) {
+                return TC_ACT_UNSPEC;
+            }
+
+
+            dns_packet_hdr_t *dns_hdr = (void *) head+ l4_hdr_off+sizeof(udp);// +sizeof(struct udphdr)+sizeof(uint64_t)+sizeof(uint32_t);
+
+            //char Q =READ_KERN(dns_hdr->QR);
+            /*unsigned req:1;
+            if(!bpf_probe_read(req, sizeof(req),dns_hdr->QR))
+                return 0;*/
+            if (dns_hdr == NULL)
+                return 0;
+            if (__bpf_ntohs(pkt.src_port) == 53 && dns_hdr->QR !=0)
+                debug_event.event_id = NET_DNS_RESPONSE;
+            if(__bpf_ntohs(pkt.dst_port) == 53 && dns_hdr->QR ==0)
+            {
+                debug_event.event_id = NET_DNS_REQUEST;
+//                 if (!skb_revalidate_data(skb, &head, &tail,l4_hdr_off+sizeof(struct udphdr)+sizeof(uint64_t)+sizeof(uint32_t))) {
+//                                return TC_ACT_UNSPEC;
+//                            }
+            }
+            bpf_perf_event_output(skb, &net_events, BPF_F_CURRENT_CPU, &debug_event, sizeof(debug_event));
+        }
+
 
     pkt.host_tid = net_ctx->host_tid;
     __builtin_memcpy(pkt.comm, net_ctx->comm, TASK_COMM_LEN);
