@@ -486,7 +486,12 @@ typedef struct net_packet {
     __be16 src_port, dst_port;
     u8 protocol;
 } net_packet_t;
-
+typedef struct dns_data
+{
+    u64 layer1;
+    u64 layer2;
+    u64 layer3;
+} dns_data_t;
 typedef struct net_debug {
     uint64_t ts;
     u32 event_id;
@@ -498,6 +503,7 @@ typedef struct net_debug {
     int old_state;
     int new_state;
     u64 sk_ptr;
+    u64 dns_data; //holds dns request info
 } net_debug_t;
 
 typedef struct net_ctx {
@@ -511,22 +517,57 @@ typedef struct net_ctx_ext {
     __be16 local_port;
 } net_ctx_ext_t;
 
-typedef struct dns_packet_hdr {
-    unsigned  id:16; //packet id
-    unsigned  QR:1; // specifies whether this message is a query (0), or a response (1)
-    unsigned  Opcode:4; // specifies kind of query in this message. (normally set to 0)
-    unsigned  AA:1; // only meaningful in responses, and specifies that the responding name server is an authority for the domain name in question section
-    unsigned  TC:1; // specifies that this message was truncated
-    unsigned  RD:1; // directs the name server to pursue the query recursively
-    unsigned  RA:1; // this be is set or cleared in a response, and denotes whether recursive query support is available in the name server
-    unsigned  Z:1; //Reserved- should be 0
-    unsigned  RCODE:1; //Response code
-    unsigned int qdcount; //specifying the number of entries in the question section
-    unsigned int ancount; //specifying the number of resource records in the answer section
-    unsigned int nscount; //specifying the number of name server resource records in the authority records section
-    unsigned int arcount; //specifying the number of resource records in the additional records section
-} __attribute__((packed)) dns_packet_hdr_t ;
+//typedef struct dns_packet_hdr {
+//    unsigned  id:16; //packet id
+//    unsigned  QR:1; // specifies whether this message is a query (0), or a response (1)
+//    unsigned  Opcode:4; // specifies kind of query in this message. (normally set to 0)
+//    unsigned  AA:1; // only meaningful in responses, and specifies that the responding name server is an authority for the domain name in question section
+//    unsigned  TC:1; // specifies that this message was truncated
+//    unsigned  RD:1; // directs the name server to pursue the query recursively
+//    unsigned  RA:1; // this be is set or cleared in a response, and denotes whether recursive query support is available in the name server
+//    unsigned  Z:1; //Reserved- should be 0
+//    unsigned  RCODE:1; //Response code
+//    unsigned int qdcount; //specifying the number of entries in the question section
+//    unsigned int ancount; //specifying the number of resource records in the answer section
+//    unsigned int nscount; //specifying the number of name server resource records in the authority records section
+//    unsigned int arcount; //specifying the number of resource records in the additional records section
+//} dns_packet_hdr_t ;
+//typedef struct dns_hdr {
+//    u16 id;
+//    unsigned QR:1;
+//} t;
 
+typedef struct dns_hdr {
+    uint16_t transaction_id;
+    uint8_t rd : 1;      //Recursion desired
+    uint8_t tc : 1;      //Truncated
+    uint8_t aa : 1;      //Authoritive answer
+    uint8_t opcode : 4;  //Opcode
+    uint8_t qr : 1;      //Query/response flag
+    uint8_t rcode : 4;   //Response code
+    uint8_t cd : 1;      //Checking disabled
+    uint8_t ad : 1;      //Authenticated data
+    uint8_t z : 1;       //Z reserved bit
+    uint8_t ra : 1;      //Recursion available
+    uint16_t q_count;    //Number of questions
+    uint16_t ans_count;  //Number of answer RRs
+    uint16_t auth_count; //Number of authority RRs
+    uint16_t add_count;  //Number of resource RRs
+} dns_hdr_t;
+typedef struct dns_request_info{
+    uint64_t qname :48;
+    uint16_t qtype;
+    uint16_t qclass;
+
+} dns_request_info_t;
+typedef struct dns_response_info{
+    uint64_t name;
+    uint16_t type;
+    uint16_t rdata_class; // formerly known as "class" in the originally struct
+    uint32_t ttl;
+    uint16_t rd_length;
+    uint32_t rdata;
+} dns_response_info_t;
 
 /*=============================== KERNEL STRUCTS =============================*/
 
@@ -4253,44 +4294,49 @@ static __always_inline int tc_probe(struct __sk_buff *skb, bool ingress) {
             }
         }
     }
-    //check if the packet is dns protocol
-    if (get_config(CONFIG_DEBUG_NET)&& pkt.protocol == IPPROTO_UDP && (__bpf_ntohs(pkt.src_port) == 53 || __bpf_ntohs(pkt.dst_port) == 53)) {
+    pkt.host_tid = net_ctx->host_tid;
+       __builtin_memcpy(pkt.comm, net_ctx->comm, TASK_COMM_LEN);
 
-            net_debug_t debug_event = {0};
-            debug_event.ts =0;
+    //check if the packet is dns protocol
+    if ( pkt.protocol == IPPROTO_UDP && (__bpf_ntohs(pkt.src_port) == 53 || __bpf_ntohs(pkt.dst_port) == 53)) {
+
             if (!skb_revalidate_data(skb, &head, &tail, l4_hdr_off + sizeof(struct udphdr))) {
                         return TC_ACT_UNSPEC;
             }
 
             struct udphdr *udp = (void *)head + l4_hdr_off;
-            if (!skb_revalidate_data(skb, &head, &tail,sizeof(head)+l4_hdr_off+sizeof(struct udphdr)+sizeof(dns_packet_hdr_t))) {
+            if (!skb_revalidate_data(skb, &head, &tail,sizeof(head)+l4_hdr_off+sizeof(struct udphdr)+sizeof(dns_hdr_t)))
                 return TC_ACT_UNSPEC;
-            }
 
+            dns_hdr_t *dns_hdr = (void *) head+ l4_hdr_off+sizeof(struct udphdr);// +sizeof(struct udphdr)+sizeof(uint64_t)+sizeof(uint32_t);
 
-            dns_packet_hdr_t *dns_hdr = (void *) head+ l4_hdr_off+sizeof(udp);// +sizeof(struct udphdr)+sizeof(uint64_t)+sizeof(uint32_t);
-
-            //char Q =READ_KERN(dns_hdr->QR);
-            /*unsigned req:1;
-            if(!bpf_probe_read(req, sizeof(req),dns_hdr->QR))
-                return 0;*/
             if (dns_hdr == NULL)
                 return 0;
-            if (__bpf_ntohs(pkt.src_port) == 53 && dns_hdr->QR !=0)
-                debug_event.event_id = NET_DNS_RESPONSE;
-            if(__bpf_ntohs(pkt.dst_port) == 53 && dns_hdr->QR ==0)
+
+            if (__bpf_ntohs(pkt.src_port) == 53 && dns_hdr->qr ==1)
             {
-                debug_event.event_id = NET_DNS_REQUEST;
-//                 if (!skb_revalidate_data(skb, &head, &tail,l4_hdr_off+sizeof(struct udphdr)+sizeof(uint64_t)+sizeof(uint32_t))) {
-//                                return TC_ACT_UNSPEC;
-//                            }
+                dns_response_info_t *dns_response = (void *) head+ l4_hdr_off+sizeof(struct udphdr)+sizeof(dns_hdr);
+                pkt.event_id = NET_DNS_RESPONSE;
             }
-            bpf_perf_event_output(skb, &net_events, BPF_F_CURRENT_CPU, &debug_event, sizeof(debug_event));
+            if(__bpf_ntohs(pkt.dst_port) == 53 && dns_hdr->qr ==0)
+            {
+                if (!skb_revalidate_data(skb, &head, &tail,sizeof(head)+l4_hdr_off+sizeof(struct udphdr)+sizeof(dns_hdr_t)+sizeof(u64)+sizeof(u16)))
+                    return TC_ACT_UNSPEC;
+
+
+                pkt.event_id = NET_DNS_REQUEST;
+//                u64 *data = head+ l4_hdr_off+sizeof(struct udphdr)+sizeof(dns_hdr);
+//                debug_event.dns_data = *data;
+
+            }
+
+            u64 flagss = BPF_F_CURRENT_CPU;
+            flagss |= (u64)skb->len << 32;
+            bpf_perf_event_output(skb, &net_events, flagss, &pkt, 36);
+            pkt.event_id = NET_PACKET; // for alerting also as a net_packet
         }
 
 
-    pkt.host_tid = net_ctx->host_tid;
-    __builtin_memcpy(pkt.comm, net_ctx->comm, TASK_COMM_LEN);
 
     // The tc perf_event_output handler will use the upper 32 bits of the flags
     // argument as a number of bytes to include of the packet payload in the
