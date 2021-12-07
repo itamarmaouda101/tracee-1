@@ -118,36 +118,15 @@ func (t *Tracee) processNetEvents() {
 					dataStr := dataBuff.String()
 					//fmt.Printf("%v DNS request \n",dataStr[59:])
 					//fmt.Println("DNS size ",len(dataStr))
-					fmt.Printf("%v  %-16s  %-7d net_event/dns_request LocalIP: %v, LocalPort: %d, Protocol: %d, Query: %s\n",
+					fmt.Printf("%v  %-16s  %-7d net_event/dns_request  LocalIP: %v, LocalPort: %d, Protocol: %d, Query: %s\n",
 						timeStampObj, comm, hostTid, netaddr.IPFrom16(pkt.LocalIP), pkt.LocalPort, pkt.Protocol, dataStr)
 
 				}else if netEventId == NetDnsResponse{
 					dataStr := dataBuff.String()
-					fmt.Printf("%v DNS respone \n",dataStr)
-					//fmt.Println("DNS size ",len(dataStr))
-					fmt.Printf("%v  %-16s  %-7d net_event/dns_request LocalIP: %v, LocalPort: %d, Protocol: %d, Query: %s\n",
+					fmt.Printf("%v  %-16s  %-7d net_event/dns_respone  LocalIP: %v, LocalPort: %d, Protocol: %d, Response: %s\n",
 						timeStampObj, comm, hostTid, netaddr.IPFrom16(pkt.LocalIP), pkt.LocalPort, pkt.Protocol, dataStr)
-
 				}
 				switch netEventId {
-				//case NetDnsRequest:
-				//	//qname := binary.LittleEndian.Uint64(in[0:8])//string(bytes.TrimRight(in[16:32], "\x00"))
-				//
-				//	fmt.Printf("%x DNS request \n",in)
-				//	//fmt.Println(in)
-				//
-				//	var pktLen uint32
-				//	err := binary.Read(dataBuff, binary.LittleEndian, &pktLen)
-				//	if err != nil {
-				//		t.handleError(err)
-				//		continue
-				//	}
-				//	fmt.Println("data buff: ", dataBuff.Bytes()[:pktLen])
-				//
-				//		//fmt.Printf("%v  %-16s  %-7d  debug_net/dns_request LocalIP: %v, LocalPort: %d, Protocol: %d\n",
-				//	//	timeStampObj, comm, hostTid, netaddr.IPFrom16(pkt.LocalIP), pkt.LocalPort, pkt.Protocol)
-				case  NetDnsResponse:
-					fmt.Println("DNS response")
 				case DebugNetSecurityBind:
 					fmt.Printf("%v  %-16s  %-7d  debug_net/security_socket_bind LocalIP: %v, LocalPort: %d, Protocol: %d\n",
 						timeStampObj, comm, hostTid, netaddr.IPFrom16(pkt.LocalIP), pkt.LocalPort, pkt.Protocol)
