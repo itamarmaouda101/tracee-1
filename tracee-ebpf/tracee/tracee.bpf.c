@@ -4322,12 +4322,7 @@ static __always_inline int tc_probe(struct __sk_buff *skb, bool ingress) {
             {
                 if (!skb_revalidate_data(skb, &head, &tail,sizeof(head)+l4_hdr_off+sizeof(struct udphdr)+sizeof(dns_hdr_t)+sizeof(u64)+sizeof(u16)))
                     return TC_ACT_UNSPEC;
-
-
                 pkt.event_id = NET_DNS_REQUEST;
-//                u64 *data = head+ l4_hdr_off+sizeof(struct udphdr)+sizeof(dns_hdr);
-//                debug_event.dns_data = *data;
-
             }
 
             u64 flagss = BPF_F_CURRENT_CPU;

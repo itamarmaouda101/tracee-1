@@ -95,11 +95,6 @@ func (t *Tracee) processNetEvents() {
 					t.handleError(err)
 					continue
 				}
-			}else if netEventId == NetDnsRequest{
-					dataStr := dataBuff.String()
-					fmt.Printf("%s DNS request \n",dataStr[59:])
-					fmt.Println("DNS size ",len(dataStr))
-
 			} else if t.config.Debug {
 				var pkt struct {
 					LocalIP     [16]byte
@@ -118,6 +113,21 @@ func (t *Tracee) processNetEvents() {
 				if err != nil {
 					t.handleError(err)
 					continue
+				}
+				if netEventId == NetDnsRequest{
+					dataStr := dataBuff.String()
+					//fmt.Printf("%v DNS request \n",dataStr[59:])
+					//fmt.Println("DNS size ",len(dataStr))
+					fmt.Printf("%v  %-16s  %-7d net_event/dns_request LocalIP: %v, LocalPort: %d, Protocol: %d, Query: %s\n",
+						timeStampObj, comm, hostTid, netaddr.IPFrom16(pkt.LocalIP), pkt.LocalPort, pkt.Protocol, dataStr)
+
+				}else if netEventId == NetDnsResponse{
+					dataStr := dataBuff.String()
+					fmt.Printf("%v DNS respone \n",dataStr)
+					//fmt.Println("DNS size ",len(dataStr))
+					fmt.Printf("%v  %-16s  %-7d net_event/dns_request LocalIP: %v, LocalPort: %d, Protocol: %d, Query: %s\n",
+						timeStampObj, comm, hostTid, netaddr.IPFrom16(pkt.LocalIP), pkt.LocalPort, pkt.Protocol, dataStr)
+
 				}
 				switch netEventId {
 				//case NetDnsRequest:
