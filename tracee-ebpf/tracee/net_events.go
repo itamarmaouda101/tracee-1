@@ -107,24 +107,60 @@ func (t *Tracee) processNetEvents() {
 					TcpNewState uint32
 					_           [4]byte //padding
 					SockPtr     uint64
-
 				}
 				err := binary.Read(dataBuff, binary.LittleEndian, &pkt)
 				if err != nil {
 					t.handleError(err)
 					continue
 				}
-				if netEventId == NetDnsRequest{
-					dataStr := dataBuff.String()
-					//fmt.Printf("%v DNS request \n",dataStr[59:])
-					//fmt.Println("DNS size ",len(dataStr))
-					fmt.Printf("%v  %-16s  %-7d net_event/dns_request  LocalIP: %v, LocalPort: %d, Protocol: %d, Query: %s\n",
-						timeStampObj, comm, hostTid, netaddr.IPFrom16(pkt.LocalIP), pkt.LocalPort, pkt.Protocol, dataStr)
+				if netEventId == NetDnsRequest {
+					dataBytes := dataBuff.Bytes()
+					for _ = range dataBytes {
+						if dataBytes[len(dataBytes)-1] == 0 {
+							dataBytes = dataBytes[:len(dataBytes)-1]
+						} else {
+							break
+						}
+					}
+					queryName := dataBytes[len(dataBytes)-28:]
+					queryTypeByte := dataBytes[len(dataBytes)-4 : len(dataBytes)-2]
+					queryClassByte := dataBytes[len(dataBytes)-2 : len(dataBytes)]
+					queryClass := "Unknown"
+					queryType := "Unknown"
+					switch queryClassByte[1] {
+					case 1:
+						queryClass = "IN"
+					case 2:
+						queryClass = "Unassigned"
+					case 3:
+						queryClass = "CH"
+					case 4:
+						queryClass = "HS"
+					}
+					switch queryTypeByte[1] {
+					case 1:
+						queryType = "A (IPv4)"
+					case 28:
+						queryType = "AAAA (IPv6)"
+					case 16:
+						queryType = "TXT"
+					case 33:
+						queryType = "SRV (location of service)"
+					}
+					fmt.Printf("%v  %-16s  %-7d net_event/dns_request  LocalIP: %v, LocalPort: %d, Protocol: %d, Query: %s, Type: %s, Class: %s\n",
+						timeStampObj, comm, hostTid, netaddr.IPFrom16(pkt.LocalIP), pkt.LocalPort, pkt.Protocol, queryName, queryType, queryClass)
 
-				}else if netEventId == NetDnsResponse{
+				} else if netEventId == NetDnsResponse {
 					dataStr := dataBuff.String()
-					fmt.Printf("%v  %-16s  %-7d net_event/dns_respone  LocalIP: %v, LocalPort: %d, Protocol: %d, Response: %s\n",
-						timeStampObj, comm, hostTid, netaddr.IPFrom16(pkt.LocalIP), pkt.LocalPort, pkt.Protocol, dataStr)
+					dataBytes := dataBuff.Bytes()
+					queryName := dataBytes[len(dataBytes)-28:]
+					fmt.Printf("%s", string(queryName))
+					answerIp := [4]byte{0}
+					copy(answerIp[:], dataBytes[len(dataBytes)-7:len(dataBytes)-3])
+					fmt.Printf("%v", answerIp)
+					fmt.Println(netaddr.IPFrom4(answerIp))
+					fmt.Printf("%v  %-16s  %-7d net_event/dns_respone  LocalIP: %v, LocalPort: %d, Protocol: %d, Requested: %v Answer: %v \n",
+						timeStampObj, comm, hostTid, netaddr.IPFrom16(pkt.LocalIP), pkt.LocalPort, pkt.Protocol, dataStr, 0)
 				}
 				switch netEventId {
 				case DebugNetSecurityBind:
