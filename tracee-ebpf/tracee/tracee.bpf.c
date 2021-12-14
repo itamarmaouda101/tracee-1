@@ -484,7 +484,6 @@ typedef struct net_packet {
     struct in6_addr src_addr, dst_addr;
     __be16 src_port, dst_port;
     u8 protocol;
-    uint8_t dns_data; //holds dns request info
 } net_packet_t;
 
 typedef struct net_debug {
@@ -530,21 +529,7 @@ typedef struct dns_hdr {
     uint16_t add_count;  //Number of resource RRs
 } __attribute__((packed)) dns_hdr_t;
 
-//typedef struct dns_hdr {
-//    uint16_t transaction_id;
-//    uint8_t qr : 1;      //Query/response flag
-//    uint8_t opcode : 4;  //Opcode
-//    uint8_t aa : 1;      //Authoritive answer
-//    uint8_t tc : 1;      //Truncated
-//    uint8_t rd : 1;      //Recursion desired
-//    uint8_t ra : 1;      //Recursion available
-//    uint8_t z : 1;       //Z reserved bit
-//    uint8_t rcode : 4;   //Response code
-//    uint16_t q_count;    //Number of questions
-//    uint16_t ans_count;  //Number of answer RRs
-//    uint16_t auth_count; //Number of authority RRs
-//    uint16_t add_count;  //Number of resource RRs
-//} dns_hdr_t;
+
 
 
 typedef struct dns_request_info{
@@ -4286,6 +4271,9 @@ static __always_inline int tc_probe(struct __sk_buff *skb, bool ingress) {
     //check if the packet is dns protocol
     if ( pkt.protocol == IPPROTO_UDP && (__bpf_ntohs(pkt.src_port) == 53 || __bpf_ntohs(pkt.dst_port) == 53)) {
 
+            pkt.src_port = (__bpf_ntohs(pkt.src_port));
+            pkt.dst_port = (__bpf_ntohs(pkt.dst_port));
+
             if (!skb_revalidate_data(skb, &head, &tail, l4_hdr_off + sizeof(struct udphdr))) {
                         return TC_ACT_UNSPEC;
             }
@@ -4298,40 +4286,33 @@ static __always_inline int tc_probe(struct __sk_buff *skb, bool ingress) {
             if (dns_hdr == NULL)
                 return 0;
 
-            if (__bpf_ntohs(pkt.src_port) == 53 && dns_hdr->qr ==1)
+            if (pkt.src_port == 53 && dns_hdr->qr ==1)
             {
                 dns_response_info_t *dns_response = (void *) head+ l4_hdr_off+sizeof(struct udphdr)+sizeof(dns_hdr);
                 u16 number_of_ans = __bpf_ntohs(dns_hdr->ans_count);
                 pkt.event_id = NET_DNS_RESPONSE;
                 uint8_t *data = head+ l4_hdr_off+sizeof(struct udphdr)+sizeof(dns_hdr);
-                pkt.dns_data = *data;
-//                #pragma unroll(10)
-//                for (u16 i=0; i < number_of_ans; i++)
-//                {
-//                    u64 flagss = BPF_F_CURRENT_CPU;
-//                    flagss |= (u64)skb->len << 32;
-//                    bpf_perf_event_output(skb, &net_events, flagss, &pkt, 50);
-//                }
+//                pkt.dns_data = *data;
                 u64 flagss = BPF_F_CURRENT_CPU;
                 flagss |= (u64)skb->len << 32;
                 bpf_perf_event_output(skb, &net_events, flagss, &pkt, sizeof(pkt));
-                pkt.event_id = NET_PACKET;
                 return TC_ACT_UNSPEC;
             }
-            if(__bpf_ntohs(pkt.dst_port) == 53 && dns_hdr->qr ==0)
+            if(pkt.dst_port == 53 && dns_hdr->qr ==0)
             {
                 if (!skb_revalidate_data(skb, &head, &tail,sizeof(head)+l4_hdr_off+sizeof(struct udphdr)+sizeof(dns_hdr_t)+sizeof(u64)+sizeof(u16)))
                     return TC_ACT_UNSPEC;
                 pkt.event_id = NET_DNS_REQUEST;
                 uint8_t *data = head+ l4_hdr_off+sizeof(struct udphdr)+sizeof(dns_hdr);
-                pkt.dns_data = *data;
+//                pkt.dns_data = *data;
             }
 
             u64 flagss = BPF_F_CURRENT_CPU;
             flagss |= (u64)skb->len << 32;
             bpf_perf_event_output(skb, &net_events, flagss, &pkt, sizeof(pkt));
-            pkt.event_id = NET_PACKET; // for alerting also as a net_packet
         }
+        pkt.event_id = NET_PACKET;
+
 
 
 
@@ -4344,8 +4325,8 @@ static __always_inline int tc_probe(struct __sk_buff *skb, bool ingress) {
     u64 flags = BPF_F_CURRENT_CPU;
     flags |= (u64)skb->len << 32;
     if (get_config(CONFIG_DEBUG_NET)){
-        pkt.src_port = __bpf_ntohs(pkt.src_port);
-        pkt.dst_port = __bpf_ntohs(pkt.dst_port);
+//        pkt.src_port = __bpf_ntohs(pkt.src_port);
+//        pkt.dst_port = __bpf_ntohs(pkt.dst_port);
         bpf_perf_event_output(skb, &net_events, flags, &pkt, sizeof(pkt));
     }
     else {
