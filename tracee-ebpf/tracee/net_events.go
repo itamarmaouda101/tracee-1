@@ -26,20 +26,19 @@ func ParseDnsMetaData(payload []byte) ([3]string, int32) {
 	for idx, val := range payload {
 		if val == 0 || val == 0xc0 {
 			//fmt.Println(payload[idx:idx+10])
+
 			if val == 0xc0 {
-				queryData[0] = "prev"
 				idx++
 			} else if payload[idx+1] == 0xc0 {
 				idx += 2
-				queryData[0] = "prev12"
+				queryData[0] = "prev"
 			} else {
-				queryData[0] = DnsPaseName(payload[1:idx])
-				//a:=DnsPaseName(payload[1:idx])
-				//fmt.Println("\n\nname::::",a)
+				if idx != 0 {
+					queryData[0] = DnsPaseName(payload[1:idx])
+				}
 			}
 			dataTypeB := payload[idx+2]
 			dataClassB := payload[idx+4]
-			//fmt.Printf("dataTypeB = %v \ndataClassB = %v\n", payload[idx+4], payload[idx+2])
 			switch dataClassB {
 			case 0:
 				queryData[2] = "Reserved"
@@ -70,10 +69,6 @@ func ParseDnsMetaData(payload []byte) ([3]string, int32) {
 				queryData[2] = "NS"
 
 			}
-			//fmt.Printf("TYPE:%d\n",dataTypeB)
-			//fmt.Printf("CLASS:%d\n",dataClassB)
-
-			//fmt.Println("\n", queryData, "aaaa:", idx-1, "bbb:", val)
 			return queryData, int32(idx + 4)
 		}
 
@@ -263,7 +258,9 @@ func (t *Tracee) processNetEvents() {
 				for i := 0; i < ansNumber; i++ {
 					ansMetaData, ansOffset := ParseDnsMetaData(dataBytes[offset:])
 					offset += ansOffset
-
+					if ansMetaData[0] == "prev" {
+						ansMetaData[0] = queryData[0]
+					}
 					TTL := int32(binary.BigEndian.Uint32(dataBytes[offset+1 : offset+5]))
 					fmt.Printf("ttl is %d\n", TTL)
 
