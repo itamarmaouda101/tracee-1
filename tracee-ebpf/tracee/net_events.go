@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"time"
+	"unsafe"
 
 	"github.com/google/gopacket"
 	"inet.af/netaddr"
@@ -75,6 +76,21 @@ func ParseDnsMetaData(payload []byte) ([3]string, int32) {
 	}
 	return queryData, 0
 }
+
+type process_ctx struct {
+	ts        uint64 // Timestamp
+	cgroup_id uint64
+	pid       uint32 // PID as in the userspace term
+	tid       uint32 // TID as in the userspace term
+	ppid      uint32 // Parent PID as in the userspace term
+	host_pid  uint32 // PID in host pid namespace
+	host_tid  uint32 // TID in host pid namespace
+	host_ppid uint32 // Parent PID in host pid namespace
+	uid       uint32
+	mnt_id    uint32
+	pid_id    uint32
+}
+
 func (t *Tracee) processNetEvents() {
 	// Todo: split pcap files by context (tid + comm)
 	// Todo: add stats for network packets (in epilog)
@@ -94,7 +110,14 @@ func (t *Tracee) processNetEvents() {
 
 			// timeStamp is nanoseconds since system boot time
 			timeStampObj := time.Unix(0, int64(timeStamp+t.bootTime))
-
+			processContextMap, err := t.bpfModule.GetMap("process_context_map") // u32, u32
+			if err != nil {
+				return
+			}
+			value, err := processContextMap.GetValue(unsafe.Pointer(&hostTid))
+			if err == nil {
+				fmt.Printf("\n\n\nsdsdsd %v, %d\n", value, len(value))
+			}
 			if netEventId == NetPacket {
 				var pktLen uint32
 				err := binary.Read(dataBuff, binary.LittleEndian, &pktLen)

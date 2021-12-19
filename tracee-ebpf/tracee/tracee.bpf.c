@@ -391,6 +391,26 @@ typedef struct event_context {
     u8 argnum;
 } context_t;
 
+typedef struct process_context {
+    u64 ts;                        // Timestamp
+    u64 cgroup_id;
+    u32 pid;                       // PID as in the userspace term
+    u32 tid;                       // TID as in the userspace term
+    u32 ppid;                      // Parent PID as in the userspace term
+    u32 host_pid;                  // PID in host pid namespace
+    u32 host_tid;                  // TID in host pid namespace
+    u32 host_ppid;                 // Parent PID in host pid namespace
+    u32 uid;
+    u32 mnt_id;
+    u32 pid_id;
+//    char comm[TASK_COMM_LEN];
+//    char uts_name[TASK_COMM_LEN];
+//    u32 eventid;
+//    s64 retval;
+//    u32 stack_id;
+//    u8 argnum;
+} process_context_t;
+
 typedef struct args {
     unsigned long args[6];
 } args_t;
@@ -586,6 +606,7 @@ BPF_HASH(bin_args_map, u64, bin_args_t);                // persist args for send
 BPF_HASH(sys_32_to_64_map, u32, u32);                   // map 32bit to 64bit syscalls
 BPF_HASH(params_types_map, u32, u64);                   // encoded parameters types for event
 BPF_HASH(process_tree_map, u32, u32);                   // filter events by the ancestry of the traced process
+BPF_HASH(process_context_map, u32, process_context_t);    // houlds the process_context data for every tid
 BPF_LRU_HASH(sock_ctx_map, u64, net_ctx_ext_t);         // socket address to process context
 BPF_LRU_HASH(network_map, local_net_id_t, net_ctx_t);   // network identifier to process context
 BPF_ARRAY(file_filter, path_filter_t, 3);               // filter vfs_write events
@@ -1157,6 +1178,22 @@ static __always_inline int get_kconfig_val(u32 key)
         return 0;
 
     return *config;
+}
+
+static __always_inline int init_process_context(process_context_t *context, struct task_struct *task)
+{
+    u64 id = bpf_get_current_pid_tgid();
+    context->host_tid = id;
+    context->host_pid = id >> 32;
+    context->host_ppid = get_task_ppid(task);
+    context->tid = get_task_ns_pid(task);
+    context->pid = get_task_ns_tgid(task);
+    context->ppid = get_task_ns_ppid(task);
+    context->mnt_id = get_task_mnt_ns_id(task);
+    context->pid_id = get_task_pid_ns_id(task);
+    context->uid = bpf_get_current_uid_gid();
+    context->ts = bpf_ktime_get_ns();
+    return 0;
 }
 
 static __always_inline int init_context(context_t *context, struct task_struct *task)
@@ -2388,6 +2425,10 @@ int tracepoint__sched__sched_process_fork(struct bpf_raw_tracepoint_args *ctx)
     struct task_struct *parent = (struct task_struct*)ctx->args[0];
     struct task_struct *child = (struct task_struct*)ctx->args[1];
 
+    process_context_t process = {};
+    init_process_context(&process, parent);
+    process.tid = get_task_ns_pid(child);
+    bpf_map_update_elem(&process_context_map, &process.host_tid, &process, BPF_ANY);
     int parent_pid = get_task_host_pid(parent);
     int child_pid = get_task_host_pid(child);
 
@@ -2442,6 +2483,10 @@ int tracepoint__sched__sched_process_exec(struct bpf_raw_tracepoint_args *ctx)
     event_data_t data = {};
     if (!init_event_data(&data, ctx))
         return 0;
+    process_context_t process = {};
+    struct task_struct * process_task = (struct task_struct *)bpf_get_current_task();
+    init_process_context(&process, process_task);
+//        return 0;
 
     // Perform the following checks before should_trace() so we can filter by
     // newly created containers/processes.  We assume that a new container/pod
@@ -2465,6 +2510,7 @@ int tracepoint__sched__sched_process_exec(struct bpf_raw_tracepoint_args *ctx)
 
     // We passed all filters (in should_trace()) - add this pid to traced pids set
     bpf_map_update_elem(&traced_pids_map, &data.context.host_tid, &data.context.host_tid, BPF_ANY);
+    bpf_map_update_elem(&process_context_map, &data.context.host_tid, &process, BPF_ANY);
 
     struct task_struct *task = (struct task_struct *)ctx->args[0];
     struct linux_binprm *bprm = (struct linux_binprm *)ctx->args[2];

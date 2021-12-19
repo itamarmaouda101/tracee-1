@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"unsafe"
 
 	"github.com/aquasecurity/tracee/pkg/external"
 )
@@ -196,6 +197,14 @@ func (t *Tracee) processEvent(ctx *context, args map[string]interface{}, argMeta
 			}
 			return err
 		}
+	case SchedProcessExitEventID:
+		processContextMap, err := t.bpfModule.GetMap("process_context_map")
+		if err != nil {
+			t.Close()
+			return err
+		}
+
+		_ = processContextMap.DeleteKey(unsafe.Pointer(&ctx.Tid))
 
 	case CgroupMkdirEventID:
 		cgroupId, ok := args["cgroup_id"].(uint64)
