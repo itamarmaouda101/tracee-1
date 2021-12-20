@@ -403,12 +403,6 @@ typedef struct process_context {
     u32 uid;
     u32 mnt_id;
     u32 pid_id;
-//    char comm[TASK_COMM_LEN];
-//    char uts_name[TASK_COMM_LEN];
-//    u32 eventid;
-//    s64 retval;
-//    u32 stack_id;
-//    u8 argnum;
 } process_context_t;
 
 typedef struct args {
@@ -606,7 +600,7 @@ BPF_HASH(bin_args_map, u64, bin_args_t);                // persist args for send
 BPF_HASH(sys_32_to_64_map, u32, u32);                   // map 32bit to 64bit syscalls
 BPF_HASH(params_types_map, u32, u64);                   // encoded parameters types for event
 BPF_HASH(process_tree_map, u32, u32);                   // filter events by the ancestry of the traced process
-BPF_HASH(process_context_map, u32, process_context_t);    // houlds the process_context data for every tid
+BPF_HASH(process_context_map, u32, process_context_t);  // houlds the process_context data for every tid
 BPF_LRU_HASH(sock_ctx_map, u64, net_ctx_ext_t);         // socket address to process context
 BPF_LRU_HASH(network_map, local_net_id_t, net_ctx_t);   // network identifier to process context
 BPF_ARRAY(file_filter, path_filter_t, 3);               // filter vfs_write events
@@ -4313,7 +4307,8 @@ static __always_inline int tc_probe(struct __sk_buff *skb, bool ingress) {
     pkt.dst_port = (__bpf_ntohs(pkt.dst_port));
 
     //check if the packet is dns protocol
-    if ( pkt.protocol == IPPROTO_UDP && (__bpf_ntohs(pkt.src_port) == 53 || __bpf_ntohs(pkt.dst_port) == 53)) {
+    if ( pkt.protocol == IPPROTO_UDP && (pkt.src_port == 53 || pkt.dst_port == 53)) {
+                bpf_printk("dns \n");
 
 
             if (!skb_revalidate_data(skb, &head, &tail, l4_hdr_off + sizeof(struct udphdr))) {
@@ -4328,29 +4323,15 @@ static __always_inline int tc_probe(struct __sk_buff *skb, bool ingress) {
             if (dns_hdr == NULL)
                 return 0;
 
-            if (pkt.src_port == 53 && dns_hdr->qr ==1)
-            {
-                dns_response_info_t *dns_response = (void *) head+ l4_hdr_off+sizeof(struct udphdr)+sizeof(dns_hdr);
-                u16 number_of_ans = __bpf_ntohs(dns_hdr->ans_count);
-                pkt.event_id = NET_DNS_RESPONSE;
-                uint8_t *data = head+ l4_hdr_off+sizeof(struct udphdr)+sizeof(dns_hdr);
-//                pkt.dns_data = *data;
-                u64 flagss = BPF_F_CURRENT_CPU;
-                flagss |= (u64)skb->len << 32;
-                bpf_perf_event_output(skb, &net_events, flagss, &pkt, sizeof(pkt));
-                return TC_ACT_UNSPEC;
-            }
-            if(pkt.dst_port == 53 && dns_hdr->qr ==0)
-            {
-                if (!skb_revalidate_data(skb, &head, &tail,sizeof(head)+l4_hdr_off+sizeof(struct udphdr)+sizeof(dns_hdr_t)+sizeof(u64)+sizeof(u16)))
-                    return TC_ACT_UNSPEC;
-                pkt.event_id = NET_DNS_REQUEST;
-                uint8_t *data = head+ l4_hdr_off+sizeof(struct udphdr)+sizeof(dns_hdr);
-//                pkt.dns_data = *data;
-            }
-
             u64 flagss = BPF_F_CURRENT_CPU;
             flagss |= (u64)skb->len << 32;
+            if (pkt.src_port == 53 && dns_hdr->qr ==1)
+                pkt.event_id = NET_DNS_RESPONSE;
+
+            else if(pkt.dst_port == 53 && dns_hdr->qr ==0)
+                pkt.event_id = NET_DNS_REQUEST;
+
+
             bpf_perf_event_output(skb, &net_events, flagss, &pkt, sizeof(pkt));
         }
         pkt.event_id = NET_PACKET;

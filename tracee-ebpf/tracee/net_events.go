@@ -4,11 +4,11 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"time"
-	"unsafe"
-
+	"github.com/aquasecurity/tracee/pkg/external"
 	"github.com/google/gopacket"
 	"inet.af/netaddr"
+	"time"
+	"unsafe"
 )
 
 func DnsPaseName(payload []byte) string {
@@ -77,20 +77,6 @@ func ParseDnsMetaData(payload []byte) ([3]string, int32) {
 	return queryData, 0
 }
 
-type process_ctx struct {
-	ts        uint64 // Timestamp
-	cgroup_id uint64
-	pid       uint32 // PID as in the userspace term
-	tid       uint32 // TID as in the userspace term
-	ppid      uint32 // Parent PID as in the userspace term
-	host_pid  uint32 // PID in host pid namespace
-	host_tid  uint32 // TID in host pid namespace
-	host_ppid uint32 // Parent PID in host pid namespace
-	uid       uint32
-	mnt_id    uint32
-	pid_id    uint32
-}
-
 func (t *Tracee) processNetEvents() {
 	// Todo: split pcap files by context (tid + comm)
 	// Todo: add stats for network packets (in epilog)
@@ -110,14 +96,20 @@ func (t *Tracee) processNetEvents() {
 
 			// timeStamp is nanoseconds since system boot time
 			timeStampObj := time.Unix(0, int64(timeStamp+t.bootTime))
+			fmt.Println("\n\n\n", processTreeMap, "\n\n\n")
 			processContextMap, err := t.bpfModule.GetMap("process_context_map") // u32, u32
-			if err != nil {
-				return
-			}
-			value, err := processContextMap.GetValue(unsafe.Pointer(&hostTid))
 			if err == nil {
-				fmt.Printf("\n\n\nsdsdsd %v, %d\n", value, len(value))
+				value, err := processContextMap.GetValue(unsafe.Pointer(&hostTid))
+				if err == nil {
+					//fmt.Printf("\n\n\nsdsdsd %v, %v\n", value, processContextMap.ValueSize())
+					fmt.Println(len(processTreeMap))
+					external.SetProcessContext(value)
+
+					//fmt.Println(time.Unix(0, int64(p.ts+t.bootTime)))
+					//fmt.Printf("addtional data: ts: %v, cgrop id: %v, pid %v, tid %v\n", p.ts, p.cgroup_id, p.pid, p.tid)
+				}
 			}
+
 			if netEventId == NetPacket {
 				var pktLen uint32
 				err := binary.Read(dataBuff, binary.LittleEndian, &pktLen)
@@ -211,7 +203,6 @@ func (t *Tracee) processNetEvents() {
 					t.handleError(err)
 					continue
 				}
-
 				dataBytes := dataBuff.Bytes()
 				for _ = range dataBytes {
 					if dataBytes[len(dataBytes)-1] == 0 {
@@ -221,7 +212,6 @@ func (t *Tracee) processNetEvents() {
 					}
 				}
 				requestMetaDeta, _ := ParseDnsMetaData(dataBytes[len(dataBytes)-28:])
-
 				fmt.Printf("%v  %-16s  %-7d  net_events/dns_request               Len: %d, SrcIP: %v, SrcPort: %d, DestIP: %v, DestPort: %d, Protocol: %d, Query: %s, Type: %s , Class %s \n",
 					timeStampObj,
 					comm,

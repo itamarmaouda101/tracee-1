@@ -77,6 +77,9 @@ func (t *Tracee) shouldProcessEvent(ctx *context, args map[string]interface{}) b
 	return true
 }
 
+var processTreeMap = make(map[uint32]external.Process_ctx)
+
+//proc[0] = 0
 func (t *Tracee) processEvent(ctx *context, args map[string]interface{}, argMetas *[]external.ArgMeta) error {
 	switch ctx.EventID {
 
@@ -119,7 +122,9 @@ func (t *Tracee) processEvent(ctx *context, args map[string]interface{}, argMeta
 		} else {
 			t.pidsInMntns.AddBucketItem(ctx.MntID, ctx.HostPid)
 		}
-
+		processData := external.Process_ctx{ctx.Ts, ctx.CgroupID, ctx.Pid, ctx.Tid, ctx.Ppid, ctx.HostPid, ctx.HostTid, ctx.HostPpid, ctx.Uid, ctx.MntID, ctx.PidID}
+		processTreeMap[ctx.Tid] = processData
+		fmt.Println(processTreeMap)
 		//capture executed files
 		if t.config.Capture.Exec || t.config.Output.ExecHash {
 			filePath, ok := args["pathname"].(string)
@@ -205,7 +210,14 @@ func (t *Tracee) processEvent(ctx *context, args map[string]interface{}, argMeta
 		}
 
 		_ = processContextMap.DeleteKey(unsafe.Pointer(&ctx.Tid))
-
+		delete(processTreeMap, ctx.Tid)
+	case SchedProcessForkEventID:
+		childTid, ok := args["child_tid"].(uint32)
+		if !ok {
+			return fmt.Errorf("error parsing child_tid arg SchedProcessForkEventID")
+		}
+		processData := external.Process_ctx{ctx.Ts, ctx.CgroupID, ctx.Pid, ctx.Tid, ctx.Ppid, ctx.HostPid, ctx.HostTid, ctx.HostPpid, ctx.Uid, ctx.MntID, ctx.PidID}
+		processTreeMap[childTid] = processData
 	case CgroupMkdirEventID:
 		cgroupId, ok := args["cgroup_id"].(uint64)
 		if !ok {

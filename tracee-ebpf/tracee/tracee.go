@@ -1,12 +1,15 @@
 package tracee
 
 import (
+	//"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
+	//"log"
 	"math"
 	"net"
 	"os"
@@ -905,6 +908,63 @@ func (t *Tracee) initBPF() error {
 	return nil
 }
 
+func (t *Tracee) initProcessTree() error {
+	procDir, err := os.Open("/proc")
+	if err != nil {
+		return fmt.Errorf("could not open proc dir: %v", err)
+	}
+	defer procDir.Close()
+
+	entries, err := procDir.Readdirnames(-1)
+	if err != nil {
+		return fmt.Errorf("could not read proc dir: %v", err)
+	}
+
+	// Iterate over each pid
+	for _, entry := range entries {
+		pid, err := strconv.ParseUint(entry, 10, 32)
+		if err != nil {
+			continue
+		}
+		pidDir, err := os.Open(fmt.Sprintf("/proc/%d/task", pid))
+		processTasks, err := pidDir.Readdirnames(-1)
+		//fmt.Println(processTasks)
+		for _, task := range processTasks {
+			dir := fmt.Sprintf("/proc/%d/task/%v/status", pid, task)
+
+			//ProcessID := pid
+			//ThreadID  :=
+			data, err := ioutil.ReadFile(dir)
+			if err != nil {
+				fmt.Println("File reading error", err)
+
+			}
+			a := strings.Fields(string(data))
+			Tgid, _ := strconv.ParseUint(a[8], 10, 32)
+			ppid, _ := strconv.ParseUint(a[14], 10, 32)
+			pid, _ := strconv.ParseUint(a[12], 10, 32)
+			tid, _ := strconv.ParseUint(task, 10, 32)
+			cgroupid := Tgid
+			hostPid := pid
+			hostPpid := ppid
+			hostTid := tid
+			//a = a[18:21]
+			uid, _ := strconv.ParseUint(a[18], 10, 32)
+			fmt.Println(uid)
+			//mntId := a[]
+			//pidId :=0
+
+			fmt.Printf("tgid: %v, pid: %v, ppid: %v\n", Tgid, pid, ppid)
+			process := external.Process_ctx{0, cgroupid, uint32(pid), uint32(tid), uint32(ppid), uint32(hostPid), uint32(hostTid), uint32(hostPpid), uint32(uid), 0, 0}
+			processTreeMap[uint32(tid)] = process
+			fmt.Println(process)
+
+			//var ctx = context{}
+		}
+	}
+	return nil
+}
+
 func (t *Tracee) writeProfilerStats(wr io.Writer) error {
 	b, err := json.MarshalIndent(t.profiledFiles, "", "  ")
 	if err != nil {
@@ -922,6 +982,7 @@ func (t *Tracee) Run() error {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	t.invokeInitNamespacesEvent()
+	t.initProcessTree()
 	t.eventsPerfMap.Start()
 	t.fileWrPerfMap.Start()
 	t.netPerfMap.Start()
