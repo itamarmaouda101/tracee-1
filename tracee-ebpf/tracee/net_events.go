@@ -3,12 +3,89 @@ package tracee
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/google/gopacket"
 	"inet.af/netaddr"
 )
+
+type pktMeta struct {
+	SrcIP    [16]byte `json:"src_ip"`
+	DestIP   [16]byte `json:"dest_ip"`
+	SrcPort  uint16   `json:"src_port"`
+	DestPort uint16   `json:"dest_port"`
+	Protocol uint8    `json:"protocol"`
+	_        [3]byte  //padding
+}
+
+type NetPacketData struct {
+	timestamp uint64  `json:"timeStamp"`
+	comm      string  `json:"comm"`
+	hostTid   uint32  `json:"hostTid"`
+	pktLen    int     `json:"pktLen"`
+	metaData  pktMeta `json:"meta_data"`
+}
+type DnsRequestPacketData struct {
+	netData    NetPacketData `json:"netData"`
+	query      string        `json:"query"`
+	queryType  string        `json:"queryType"`
+	queryclass string        `json:"queryclass"`
+}
+type DnsAnswerData struct {
+	number      int    `json:"number"`
+	answerType  string `json:"answerType"`
+	answerClass string `json:"answerClass"`
+	recordName  string `json:"recordName"`
+	ttl         int    `json:"ttl"`
+}
+type DnsResponsePacketData struct {
+	netData   NetPacketData   `json:"netData"`
+	queryData []DnsAnswerData `json:"query_data"`
+}
+
+func parsePacketMetaData(payload []byte) (pktMeta, error) {
+	var pktMetaData pktMeta
+	err := binary.Read(bytes.NewBuffer(payload), binary.LittleEndian, &pktMetaData)
+	if err != nil {
+		return pktMetaData, err
+	}
+	return pktMetaData, nil
+}
+func parseNetPacketData(payload []byte) (NetPacketData, error) {
+	var pktData NetPacketData
+	timeStamp := binary.LittleEndian.Uint64(payload[0:8])
+	hostTid := binary.LittleEndian.Uint32(payload[12:16])
+	comm := string(bytes.TrimRight(payload[16:32], "\x00"))
+	pktData.timestamp = timeStamp
+	pktData.hostTid = hostTid
+	pktData.comm = comm
+	err := binary.Read(bytes.NewBuffer(payload), binary.LittleEndian, &pktData.pktLen)
+	if err != nil {
+		return pktData, err
+	}
+	pktMeta, err := parsePacketMetaData(payload)
+	if err != nil {
+		return pktData, err
+	}
+	pktData.metaData = pktMeta
+	return pktData, nil
+
+}
+func DnsRequestPacket(payload []byte) (DnsRequestPacketData, error) {
+	var request DnsRequestPacketData
+	var err error = nil
+	request.netData, err = parseNetPacketData(payload)
+	if err != nil {
+		return request, err
+	}
+	request.query, request.queryType, request.queryclass = ParseDnsMetaData(payload)
+	return request, nil
+}
+func DnsResponsePacket() {
+
+}
 
 func DnsPaseName(payload []byte) string {
 	for idx, val := range payload {
@@ -264,7 +341,7 @@ func (t *Tracee) processNetEvents() {
 					TTL := int32(binary.BigEndian.Uint32(dataBytes[offset+1 : offset+5]))
 					fmt.Printf("ttl is %d\n", TTL)
 
-					dataLen := binary.BigEndian.Uint16(dataBytes[offset+5 : offset+7]) // binary.LittleEndian.Uint16(dataBytes[offset+8:offset+10]) //dataBytes[offset+4]
+					dataLen := binary.BigEndian.Uint16(dataBytes[offset+5 : offset+7])
 
 					addr := netaddr.IP{}
 					nameRecord := ""
