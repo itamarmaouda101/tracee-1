@@ -3,7 +3,6 @@ package tracee
 import (
 	"bytes"
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -21,10 +20,10 @@ type pktMeta struct {
 }
 
 type NetPacketData struct {
-	timestamp uint64  `json:"timeStamp"`
+	timestamp uint64  `json:"time_stamp"`
 	comm      string  `json:"comm"`
-	hostTid   uint32  `json:"hostTid"`
-	pktLen    int     `json:"pktLen"`
+	hostTid   uint32  `json:"host_tid"`
+	pktLen    int     `json:"pkt_len"`
 	metaData  pktMeta `json:"meta_data"`
 }
 type DnsRequestPacketData struct {
@@ -35,19 +34,20 @@ type DnsRequestPacketData struct {
 }
 type DnsAnswerData struct {
 	number      int    `json:"number"`
-	answerType  string `json:"answerType"`
-	answerClass string `json:"answerClass"`
-	recordName  string `json:"recordName"`
+	answerType  string `json:"answer_type"`
+	answerClass string `json:"answer_class"`
+	recordName  string `json:"record_name"`
 	ttl         int    `json:"ttl"`
 }
 type DnsResponsePacketData struct {
-	netData   NetPacketData   `json:"netData"`
+	netData   NetPacketData   `json:"net_data"`
 	queryData []DnsAnswerData `json:"query_data"`
 }
 
 func parsePacketMetaData(payload []byte) (pktMeta, error) {
 	var pktMetaData pktMeta
-	err := binary.Read(bytes.NewBuffer(payload), binary.LittleEndian, &pktMetaData)
+	payloadReader := bytes.NewReader(payload)
+	err := binary.Read(payloadReader, binary.LittleEndian, &pktMetaData)
 	if err != nil {
 		return pktMetaData, err
 	}
@@ -55,39 +55,53 @@ func parsePacketMetaData(payload []byte) (pktMeta, error) {
 }
 func parseNetPacketData(payload []byte) (NetPacketData, error) {
 	var pktData NetPacketData
+	//payloadReader := bytes.NewBuffer(payload)
+	buf := new(bytes.Buffer)
+	binary.Write(buf, binary.LittleEndian, &payload)
 	timeStamp := binary.LittleEndian.Uint64(payload[0:8])
 	hostTid := binary.LittleEndian.Uint32(payload[12:16])
 	comm := string(bytes.TrimRight(payload[16:32], "\x00"))
 	pktData.timestamp = timeStamp
 	pktData.hostTid = hostTid
 	pktData.comm = comm
-	err := binary.Read(bytes.NewBuffer(payload), binary.LittleEndian, &pktData.pktLen)
+	var pktLen int
+	err := binary.Read(bytes.NewBuffer(payload), binary.LittleEndian, &pktLen)
 	if err != nil {
 		return pktData, err
 	}
+	pktData.pktLen = pktLen
 	pktMeta, err := parsePacketMetaData(payload)
 	if err != nil {
 		return pktData, err
 	}
 	pktData.metaData = pktMeta
 	return pktData, nil
-
 }
-func DnsRequestPacket(payload []byte) (DnsRequestPacketData, error) {
+func parseDnsAnswerData(payload []byte) (DnsAnswerData, error) {
+	var dnsAnswer DnsAnswerData
+	var err error = nil
+
+	return dnsAnswer, err
+}
+
+func parseDnsRequestPacket(payload []byte) (DnsRequestPacketData, error) {
 	var request DnsRequestPacketData
 	var err error = nil
 	request.netData, err = parseNetPacketData(payload)
 	if err != nil {
 		return request, err
 	}
-	request.query, request.queryType, request.queryclass = ParseDnsMetaData(payload)
+	question, idx := ParseDnsQuestion(payload)
+	if idx == 0 {
+		return DnsRequestPacketData{}, fmt.Errorf("Error in ParseDnsQuestion")
+	}
+	request.query = question[0]
+	request.queryType = question[1]
+	request.queryclass = question[2]
 	return request, nil
 }
-func DnsResponsePacket() {
 
-}
-
-func DnsPaseName(payload []byte) string {
+func ParseDnsRequestDomain(payload []byte) string {
 	for idx, val := range payload {
 		if int16(val) < 32 && idx != 0 {
 			payload[idx] = byte('.')
@@ -96,14 +110,12 @@ func DnsPaseName(payload []byte) string {
 	return string(payload)
 }
 
-//asumme we get the payload as the start of the name and then we parse the name, class , type
-func ParseDnsMetaData(payload []byte) ([3]string, int32) {
+//we asumme the payload is the start of the name and then we parse the name, class , type
+func ParseDnsQuestion(payload []byte) ([3]string, int32) {
 
 	queryData := [3]string{"", "Unknown", "Unknown"} //name, type, class
 	for idx, val := range payload {
 		if val == 0 || val == 0xc0 {
-			//fmt.Println(payload[idx:idx+10])
-
 			if val == 0xc0 {
 				idx++
 			} else if payload[idx+1] == 0xc0 {
@@ -111,7 +123,7 @@ func ParseDnsMetaData(payload []byte) ([3]string, int32) {
 				queryData[0] = "prev"
 			} else {
 				if idx != 0 {
-					queryData[0] = DnsPaseName(payload[1:idx])
+					queryData[0] = ParseDnsRequestDomain(payload[1:idx])
 				}
 			}
 			dataTypeB := payload[idx+2]
@@ -238,57 +250,63 @@ func (t *Tracee) processNetEvents() {
 					continue
 				}
 			} else if netEventId == NetDnsRequest {
-
-				var pktMeta struct {
-					SrcIP    [16]byte
-					DestIP   [16]byte
-					SrcPort  uint16
-					DestPort uint16
-					Protocol uint8
-					_        [3]byte //padding
-				}
-				var pktLen uint32
-				err := binary.Read(dataBuff, binary.LittleEndian, &pktLen)
+				//payload := dataBuff.Bytes()
+				request, err := parseDnsRequestPacket(in[32:])
 				if err != nil {
-					t.handleError(err)
-					continue
+					fmt.Println("error  netEventId == NetDnsRequest")
+					fmt.Println(err)
 				}
-				var ifindex uint32
-				err = binary.Read(dataBuff, binary.LittleEndian, &ifindex)
-				if err != nil {
-					t.handleError(err)
-					continue
-				}
-
-				err = binary.Read(dataBuff, binary.LittleEndian, &pktMeta)
-				if err != nil {
-					t.handleError(err)
-					continue
-				}
-
-				dataBytes := dataBuff.Bytes()
-				for _ = range dataBytes {
-					if dataBytes[len(dataBytes)-1] == 0 {
-						dataBytes = dataBytes[:len(dataBytes)-1]
-					} else {
-						break
-					}
-				}
-				requestMetaDeta, _ := ParseDnsMetaData(dataBytes[len(dataBytes)-28:])
-
-				fmt.Printf("%v  %-16s  %-7d  net_events/dns_request               Len: %d, SrcIP: %v, SrcPort: %d, DestIP: %v, DestPort: %d, Protocol: %d, Query: %s, Type: %s , Class %s \n",
-					timeStampObj,
-					comm,
-					hostTid,
-					pktLen,
-					netaddr.IPFrom16(pktMeta.SrcIP),
-					pktMeta.SrcPort,
-					netaddr.IPFrom16(pktMeta.DestIP),
-					pktMeta.DestPort,
-					pktMeta.Protocol,
-					requestMetaDeta[0],
-					requestMetaDeta[1],
-					requestMetaDeta[2])
+				fmt.Println("\n\n", request)
+				//var pktMeta struct {
+				//	SrcIP    [16]byte
+				//	DestIP   [16]byte
+				//	SrcPort  uint16
+				//	DestPort uint16
+				//	Protocol uint8
+				//	_        [3]byte //padding
+				//}
+				//var pktLen uint32
+				//err := binary.Read(dataBuff, binary.LittleEndian, &pktLen)
+				//if err != nil {
+				//	t.handleError(err)
+				//	continue
+				//}
+				//var ifindex uint32
+				//err = binary.Read(dataBuff, binary.LittleEndian, &ifindex)
+				//if err != nil {
+				//	t.handleError(err)
+				//	continue
+				//}
+				//
+				//err = binary.Read(dataBuff, binary.LittleEndian, &pktMeta)
+				//if err != nil {
+				//	t.handleError(err)
+				//	continue
+				//}
+				//
+				//dataBytes := dataBuff.Bytes()
+				//for _ = range dataBytes {
+				//	if dataBytes[len(dataBytes)-1] == 0 {
+				//		dataBytes = dataBytes[:len(dataBytes)-1]
+				//	} else {
+				//		break
+				//	}
+				//}
+				//requestMetaDeta, _ := P(dataBytes[len(dataBytes)-28:])
+				//
+				//fmt.Printf("%v  %-16s  %-7d  net_events/dns_request               Len: %d, SrcIP: %v, SrcPort: %d, DestIP: %v, DestPort: %d, Protocol: %d, Query: %s, Type: %s , Class %s \n",
+				//	timeStampObj,
+				//	comm,
+				//	hostTid,
+				//	pktLen,
+				//	netaddr.IPFrom16(pktMeta.SrcIP),
+				//	pktMeta.SrcPort,
+				//	netaddr.IPFrom16(pktMeta.DestIP),
+				//	pktMeta.DestPort,
+				//	pktMeta.Protocol,
+				//	requestMetaDeta[0],
+				//	requestMetaDeta[1],
+				//	requestMetaDeta[2])
 
 			} else if netEventId == NetDnsResponse {
 				var pktMeta struct {
@@ -328,12 +346,12 @@ func (t *Tracee) processNetEvents() {
 				}
 				ansNumber := int(dataBytes[49])
 				//parse query metadata
-				queryData, offset := ParseDnsMetaData(dataBytes[54:])
+				queryData, offset := ParseDnsQuestion(dataBytes[54:])
 
 				offset += 54
 				//loop over the response answers
 				for i := 0; i < ansNumber; i++ {
-					ansMetaData, ansOffset := ParseDnsMetaData(dataBytes[offset:])
+					ansMetaData, ansOffset := ParseDnsQuestion(dataBytes[offset:])
 					offset += ansOffset
 					if ansMetaData[0] == "prev" {
 						ansMetaData[0] = queryData[0]

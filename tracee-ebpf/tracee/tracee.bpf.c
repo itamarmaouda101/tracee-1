@@ -4267,7 +4267,7 @@ static __always_inline int tc_probe(struct __sk_buff *skb, bool ingress) {
     pkt.dst_port = (__bpf_ntohs(pkt.dst_port));
 
     //check if the packet is dns protocol
-    if ( pkt.protocol == IPPROTO_UDP && (__bpf_ntohs(pkt.src_port) == 53 || __bpf_ntohs(pkt.dst_port) == 53)) {
+    if ( pkt.protocol == IPPROTO_UDP && pkt.src_port == 53 || pkt.dst_port == 53) {
 
 
             if (!skb_revalidate_data(skb, &head, &tail, l4_hdr_off + sizeof(struct udphdr))) {
@@ -4288,7 +4288,6 @@ static __always_inline int tc_probe(struct __sk_buff *skb, bool ingress) {
                 u16 number_of_ans = __bpf_ntohs(dns_hdr->ans_count);
                 pkt.event_id = NET_DNS_RESPONSE;
                 uint8_t *data = head+ l4_hdr_off+sizeof(struct udphdr)+sizeof(dns_hdr);
-//                pkt.dns_data = *data;
                 u64 flagss = BPF_F_CURRENT_CPU;
                 flagss |= (u64)skb->len << 32;
                 bpf_perf_event_output(skb, &net_events, flagss, &pkt, sizeof(pkt));
@@ -4300,7 +4299,6 @@ static __always_inline int tc_probe(struct __sk_buff *skb, bool ingress) {
                     return TC_ACT_UNSPEC;
                 pkt.event_id = NET_DNS_REQUEST;
                 uint8_t *data = head+ l4_hdr_off+sizeof(struct udphdr)+sizeof(dns_hdr);
-//                pkt.dns_data = *data;
             }
 
             u64 flagss = BPF_F_CURRENT_CPU;
