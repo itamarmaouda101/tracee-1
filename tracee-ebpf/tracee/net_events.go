@@ -10,6 +10,40 @@ import (
 	"inet.af/netaddr"
 )
 
+//type pktMeta struct {
+//	SrcIP    [16]byte `json:"src_ip"`
+//	DestIP   [16]byte `json:"dest_ip"`
+//	SrcPort  uint16   `json:"src_port"`
+//	DestPort uint16   `json:"dest_port"`
+//	Protocol uint8    `json:"protocol"`
+//	_        [3]byte  //padding
+//}
+//
+//type NetPacketData struct {
+//	timestamp uint64  `json:"time_stamp"`
+//	comm      string  `json:"comm"`
+//	hostTid   uint32  `json:"host_tid"`
+//	pktLen    int     `json:"pkt_len"`
+//	metaData  pktMeta `json:"meta_data"`
+//}
+//type DnsRequestPacketData struct {
+//	netData    NetPacketData `json:"netData"`
+//	query      string        `json:"query"`
+//	queryType  string        `json:"queryType"`
+//	queryclass string        `json:"queryclass"`
+//}
+//type DnsAnswerData struct {
+//	number      int    `json:"number"`
+//	answerType  string `json:"answer_type"`
+//	answerClass string `json:"answer_class"`
+//	recordName  string `json:"record_name"`
+//	ttl         int    `json:"ttl"`
+//}
+//type DnsResponsePacketData struct {
+//	netData   NetPacketData   `json:"net_data"`
+//	queryData []DnsAnswerData `json:"query_data"`
+//}
+
 func DnsPaseName(payload []byte) string {
 	for idx, val := range payload {
 		if int16(val) < 32 && idx != 0 {
@@ -32,9 +66,12 @@ func ParseDnsMetaData(payload []byte) ([3]string, int32) {
 			} else if payload[idx+1] == 0xc0 {
 				idx += 2
 				queryData[0] = "prev"
+				fmt.Println("prevvvv")
 			} else {
 				if idx != 0 {
+					fmt.Println("before:", payload[1:idx])
 					queryData[0] = DnsPaseName(payload[1:idx])
+					fmt.Println("after:", queryData[0])
 				}
 			}
 			dataTypeB := payload[idx+2]
@@ -42,6 +79,7 @@ func ParseDnsMetaData(payload []byte) ([3]string, int32) {
 			switch dataClassB {
 			case 0:
 				queryData[2] = "Reserved"
+				fmt.Println(payload)
 			case 1:
 				queryData[2] = "IN"
 			case 2:
@@ -69,6 +107,7 @@ func ParseDnsMetaData(payload []byte) ([3]string, int32) {
 				queryData[2] = "NS"
 
 			}
+			fmt.Println(queryData)
 			return queryData, int32(idx + 4)
 		}
 
@@ -197,6 +236,7 @@ func (t *Tracee) processNetEvents() {
 						break
 					}
 				}
+				fmt.Printf("%v\n", dataBytes[len(dataBytes)-28:])
 				requestMetaDeta, _ := ParseDnsMetaData(dataBytes[len(dataBytes)-28:])
 
 				fmt.Printf("%v  %-16s  %-7d  net_events/dns_request               Len: %d, SrcIP: %v, SrcPort: %d, DestIP: %v, DestPort: %d, Protocol: %d, Query: %s, Type: %s , Class %s \n",
@@ -212,6 +252,18 @@ func (t *Tracee) processNetEvents() {
 					requestMetaDeta[0],
 					requestMetaDeta[1],
 					requestMetaDeta[2])
+
+				//var requestPacket DnsRequestPacketData
+				//requestPacket.netData.timestamp = timeStamp
+				//requestPacket.netData.comm = comm
+				//requestPacket.netData.hostTid = hostTid
+				//requestPacket.netData.pktLen = int(pktLen)
+				//requestPacket.netData.metaData.SrcIP = pktMeta.SrcIP
+				//requestPacket.netData.metaData.SrcPort = pktMeta.SrcPort
+				//requestPacket.netData.metaData.DestIP = pktMeta.DestIP
+				//requestPacket.netData.metaData.DestPort = pktMeta.DestPort
+				//requestPacket.netData.metaData.Protocol = pktMeta.Protocol
+				//fmt.Println(requestPacket)
 
 			} else if netEventId == NetDnsResponse {
 				var pktMeta struct {

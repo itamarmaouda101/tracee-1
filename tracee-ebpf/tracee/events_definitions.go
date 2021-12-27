@@ -87,6 +87,8 @@ const (
 	DebugNetUdpV6DestroySock
 	DebugNetInetSockSetState
 	DebugNetTcpConnect
+	NetDnsRequest
+	NetDnsResponse
 )
 
 const Unique32BitSyscallsStartID = 3000

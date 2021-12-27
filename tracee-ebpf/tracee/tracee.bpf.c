@@ -4267,7 +4267,7 @@ static __always_inline int tc_probe(struct __sk_buff *skb, bool ingress) {
     pkt.dst_port = (__bpf_ntohs(pkt.dst_port));
 
     //check if the packet is dns protocol
-    if ( pkt.protocol == IPPROTO_UDP && (__bpf_ntohs(pkt.src_port) == 53 || __bpf_ntohs(pkt.dst_port) == 53)) {
+    if ( pkt.protocol == IPPROTO_UDP && pkt.src_port == 53 || pkt.dst_port == 53) {
 
 
             if (!skb_revalidate_data(skb, &head, &tail, l4_hdr_off + sizeof(struct udphdr))) {
