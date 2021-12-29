@@ -51,6 +51,17 @@ type DnsResponsePacketData struct {
 	answerData DnsAnswerData `json:"answer_data"`
 }
 
+func cutEndNullbytes(dataBytes []byte) []byte {
+	for _ = range dataBytes {
+		if dataBytes[len(dataBytes)-1] == 0 {
+			dataBytes = dataBytes[:len(dataBytes)-1]
+		} else {
+			break
+		}
+	}
+	return dataBytes
+}
+
 func DnsPaseName(payload []byte) string {
 	for idx, val := range payload {
 		if int16(val) < 32 && idx != 0 {
@@ -60,6 +71,7 @@ func DnsPaseName(payload []byte) string {
 	return string(payload)
 }
 
+//func parseDnsResponseData()
 func (t Tracee) parsePacketMetaData(payload *bytes.Buffer) (pktMeta, error, uint32, int) {
 	var pktMetaData pktMeta
 	var pktLen uint32
@@ -139,10 +151,6 @@ func ParseDnsMetaData(payload []byte) ([3]string, int32) {
 				queryData[2] = "NS"
 
 			}
-			//fmt.Printf("TYPE:%d\n",dataTypeB)
-			//fmt.Printf("CLASS:%d\n",dataClassB)
-
-			//fmt.Println("\n", queryData, "aaaa:", idx-1, "bbb:", val)
 			return queryData, int32(idx + 4)
 		}
 
@@ -170,7 +178,6 @@ func (t *Tracee) processNetEvents() {
 			timeStampObj := time.Unix(0, int64(timeStamp+t.bootTime))
 
 			if netEventId == NetPacket {
-
 				netPacket, err, pktLen, idx := t.parsePacketMetaData(dataBuff)
 				if err != nil {
 					t.handleError(err)
@@ -209,49 +216,14 @@ func (t *Tracee) processNetEvents() {
 					continue
 				}
 			} else if netEventId == NetDnsRequest {
-
-				//var pktMeta struct {
-				//	SrcIP    [16]byte
-				//	DestIP   [16]byte
-				//	SrcPort  uint16
-				//	DestPort uint16
-				//	Protocol uint8
-				//	_        [3]byte //padding
-				//}
-				//var pktLen uint32
-				//err := binary.Read(dataBuff, binary.LittleEndian, &pktLen)
-				//if err != nil {
-				//	t.handleError(err)
-				//	continue
-				//}
-				//var ifindex uint32
-				//err = binary.Read(dataBuff, binary.LittleEndian, &ifindex)
-				//if err != nil {
-				//	t.handleError(err)
-				//	continue
-				//}
-				//
-				//err = binary.Read(dataBuff, binary.LittleEndian, &pktMeta)
-				//if err != nil {
-				//	t.handleError(err)
-				//	continue
-				//}
 				netPacket, err, pktLen, _ := t.parsePacketMetaData(dataBuff)
 				if err != nil {
 					t.handleError(err)
 					continue
 				}
-
 				dataBytes := dataBuff.Bytes()
-				for _ = range dataBytes {
-					if dataBytes[len(dataBytes)-1] == 0 {
-						dataBytes = dataBytes[:len(dataBytes)-1]
-					} else {
-						break
-					}
-				}
-				requestMetaDeta, _ := ParseDnsMetaData(dataBytes[len(dataBytes)-20:])
-
+				dataBytes = cutEndNullbytes(dataBytes)
+				requestMetaData, _ := ParseDnsMetaData(dataBytes[len(dataBytes)-20:])
 				fmt.Printf("%v  %-16s  %-7d  net_events/dns_request               Len: %d, SrcIP: %v, SrcPort: %d, DestIP: %v, DestPort: %d, Protocol: %d, Query: %s, Type: %s , Class %s \n",
 					timeStampObj,
 					comm,
@@ -262,9 +234,9 @@ func (t *Tracee) processNetEvents() {
 					netaddr.IPFrom16(netPacket.DestIP),
 					netPacket.DestPort,
 					netPacket.Protocol,
-					requestMetaDeta[0],
-					requestMetaDeta[1],
-					requestMetaDeta[2])
+					requestMetaData[0],
+					requestMetaData[1],
+					requestMetaData[2])
 
 			} else if netEventId == NetDnsResponse {
 				netPacket, err, pktLen, _ := t.parsePacketMetaData(dataBuff)
@@ -274,13 +246,7 @@ func (t *Tracee) processNetEvents() {
 				}
 
 				dataBytes := dataBuff.Bytes()
-				for _ = range dataBytes {
-					if dataBytes[len(dataBytes)-1] == 0 {
-						dataBytes = dataBytes[:len(dataBytes)-1]
-					} else {
-						break
-					}
-				}
+				dataBytes = cutEndNullbytes(dataBytes)
 				ansNumber := int(dataBytes[49])
 				//parse query metadata
 				queryData, offset := ParseDnsMetaData(dataBytes[54:])
@@ -289,10 +255,11 @@ func (t *Tracee) processNetEvents() {
 				//loop over the response answers
 				for i := 0; i < ansNumber; i++ {
 					ansMetaData, ansOffset := ParseDnsMetaData(dataBytes[offset:])
+					if ansMetaData[0] == "prev" {
+						ansMetaData[0] = queryData[0]
+					}
 					offset += ansOffset
-
 					TTL := int32(binary.BigEndian.Uint32(dataBytes[offset+1 : offset+5]))
-					fmt.Printf("ttl is %d\n", TTL)
 
 					dataLen := binary.BigEndian.Uint16(dataBytes[offset+5 : offset+7]) // binary.LittleEndian.Uint16(dataBytes[offset+8:offset+10]) //dataBytes[offset+4]
 
@@ -301,19 +268,17 @@ func (t *Tracee) processNetEvents() {
 					switch ansMetaData[1] {
 					case "CNAME":
 						nameRecord = string(dataBytes[offset+7 : offset+7+(int32(dataLen))])
-						//fmt.Printf("name record is %s\n", nameRecod)
 					case "A (IPv4)":
 						responseAddr := [4]byte{0}
 						copy(responseAddr[:], dataBytes[offset+7:offset+11])
 						addr = netaddr.IPFrom4(responseAddr)
-						//fmt.Printf("IPv4 is %v\n", addr)
 					case "AAAA (IPv6)":
 						responseAddr := [16]byte{0}
 						copy(responseAddr[:], dataBytes[offset+7:offset+23])
 						addr = netaddr.IPFrom16(responseAddr)
-						//fmt.Printf("IPv6 is %v\n", addr)
 					}
 					if ansMetaData[1] == "CNAME" {
+
 						fmt.Printf("%v  %-16s  %-7d  net_event/dns_response               Len: %d, SrcIP: %v, SrcPort: %d, DestIP: %v, DestPort: %d, Protocol: %d, Query: %s, Type: %s , Class: %s, Answer[%d]: Name:%v, Type: %v, Class: %v, record_name: %s, TTL: %v\n",
 							timeStampObj,
 							comm,
@@ -333,7 +298,6 @@ func (t *Tracee) processNetEvents() {
 							ansMetaData[2],
 							nameRecord,
 							TTL)
-						//fmt.Printf("dns_response: Name:%v, Type: %v, Class: %v, Address: %v, TTL: %v, addr: %-16s\n",ansMetaData[0],ansMetaData[1],ansMetaData[2],0,TTL, nameRecord )
 
 					} else {
 						fmt.Printf("%v  %-16s  %-7d  net_event/dns_response               Len: %d, SrcIP: %v, SrcPort: %d, DestIP: %v, DestPort: %d, Protocol: %d, Query: %s, Type: %s , Class: %s, Answer[%d]: Name:%v, Type: %v, Class: %v, Address: %-16s, TTL: %v\n",
