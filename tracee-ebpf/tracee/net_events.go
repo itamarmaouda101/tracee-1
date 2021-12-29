@@ -10,6 +10,47 @@ import (
 	"inet.af/netaddr"
 )
 
+type pktMeta struct {
+	SrcIP    [16]byte `json:"src_ip"`
+	DestIP   [16]byte `json:"dest_ip"`
+	SrcPort  uint16   `json:"src_port"`
+	DestPort uint16   `json:"dest_port"`
+	Protocol uint8    `json:"protocol"`
+	_        [3]byte  //padding
+}
+
+type NetPacketData struct {
+	timestamp uint64  `json:"time_stamp"`
+	comm      string  `json:"comm"`
+	hostTid   uint32  `json:"host_tid"`
+	pktLen    uint32  `json:"pkt_len"`
+	metaData  pktMeta `json:"meta_data"`
+}
+type DnsQueryData struct {
+	query      string `json:"query"`
+	queryType  string `json:"queryType"`
+	queryClass string `json:"queryclass"`
+}
+
+type DnsRequestPacketData struct {
+	netData NetPacketData `json:"netData"`
+	Query   DnsQueryData  `json:"query"`
+}
+
+type DnsAnswerData struct {
+	number      int      `json:"number"`
+	answerType  string   `json:"answer_type"`
+	answerClass string   `json:"answer_class"`
+	recordName  string   `json:"record_name"`
+	ip          [16]byte `json:"ip"`
+	ttl         int      `json:"ttl"`
+}
+type DnsResponsePacketData struct {
+	netData    NetPacketData `json:"net_data"`
+	queryData  DnsQueryData  `json:"query_data"`
+	answerData DnsAnswerData `json:"answer_data"`
+}
+
 func DnsPaseName(payload []byte) string {
 	for idx, val := range payload {
 		if int16(val) < 32 && idx != 0 {
@@ -19,13 +60,43 @@ func DnsPaseName(payload []byte) string {
 	return string(payload)
 }
 
+func (t Tracee) parsePacketMetaData(payload *bytes.Buffer) (pktMeta, error, uint32, int) {
+	var pktMetaData pktMeta
+	var pktLen uint32
+	fmt.Println("called\n\n\n")
+
+	err := binary.Read(payload, binary.LittleEndian, &pktLen)
+	if err != nil {
+		fmt.Println("failed out1\n\n\n")
+		return pktMetaData, err, 0, 0
+	}
+	var ifindex uint32
+	err = binary.Read(payload, binary.LittleEndian, &ifindex)
+	if err != nil {
+		fmt.Println("failed out2\n\n\n")
+
+		return pktMetaData, err, 0, 0
+	}
+	interfaceIndex, ok := t.ngIfacesIndex[int(ifindex)]
+	if !ok {
+		fmt.Println("failed out3\n\n\n")
+		return pktMetaData, err, 0, 0
+	}
+	err = binary.Read(payload, binary.LittleEndian, &pktMetaData)
+	if err != nil {
+		fmt.Println("failed out4\n\n\n")
+		return pktMetaData, err, 0, 0
+	}
+	fmt.Println("packet meta \n\n", pktMetaData)
+	return pktMetaData, nil, pktLen, interfaceIndex
+}
+
 //asumme we get the payload as the start of the name and then we parse the name, class , type
 func ParseDnsMetaData(payload []byte) ([3]string, int32) {
 
 	queryData := [3]string{"", "Unknown", "Unknown"} //name, type, class
 	for idx, val := range payload {
 		if val == 0 || val == 0xc0 {
-			//fmt.Println(payload[idx:idx+10])
 			if val == 0xc0 {
 				queryData[0] = "prev"
 				idx++
@@ -34,12 +105,10 @@ func ParseDnsMetaData(payload []byte) ([3]string, int32) {
 				queryData[0] = "prev12"
 			} else {
 				queryData[0] = DnsPaseName(payload[1:idx])
-				//a:=DnsPaseName(payload[1:idx])
-				//fmt.Println("\n\nname::::",a)
+
 			}
 			dataTypeB := payload[idx+2]
 			dataClassB := payload[idx+4]
-			//fmt.Printf("dataTypeB = %v \ndataClassB = %v\n", payload[idx+4], payload[idx+2])
 			switch dataClassB {
 			case 0:
 				queryData[2] = "Reserved"
@@ -101,49 +170,23 @@ func (t *Tracee) processNetEvents() {
 			timeStampObj := time.Unix(0, int64(timeStamp+t.bootTime))
 
 			if netEventId == NetPacket {
-				var pktLen uint32
-				err := binary.Read(dataBuff, binary.LittleEndian, &pktLen)
-				if err != nil {
-					t.handleError(err)
-					continue
-				}
-				var ifindex uint32
-				err = binary.Read(dataBuff, binary.LittleEndian, &ifindex)
-				if err != nil {
-					t.handleError(err)
-					continue
-				}
-				idx, ok := t.ngIfacesIndex[int(ifindex)]
-				if !ok {
-					t.handleError(err)
-					continue
-				}
 
+				netPacket, err, pktLen, idx := t.parsePacketMetaData(dataBuff)
+				if err != nil {
+					t.handleError(err)
+					continue
+				}
 				if t.config.Debug {
-					var pktMeta struct {
-						SrcIP    [16]byte
-						DestIP   [16]byte
-						SrcPort  uint16
-						DestPort uint16
-						Protocol uint8
-						_        [3]byte //padding
-					}
-					err = binary.Read(dataBuff, binary.LittleEndian, &pktMeta)
-					if err != nil {
-						t.handleError(err)
-						continue
-					}
-
 					fmt.Printf("%v  %-16s  %-7d  debug_net/packet               Len: %d, SrcIP: %v, SrcPort: %d, DestIP: %v, DestPort: %d, Protocol: %d\n",
 						timeStampObj,
 						comm,
 						hostTid,
 						pktLen,
-						netaddr.IPFrom16(pktMeta.SrcIP),
-						pktMeta.SrcPort,
-						netaddr.IPFrom16(pktMeta.DestIP),
-						pktMeta.DestPort,
-						pktMeta.Protocol)
+						netaddr.IPFrom16(netPacket.SrcIP),
+						netPacket.SrcPort,
+						netaddr.IPFrom16(netPacket.DestIP),
+						netPacket.DestPort,
+						netPacket.Protocol)
 				}
 
 				info := gopacket.CaptureInfo{
@@ -167,28 +210,33 @@ func (t *Tracee) processNetEvents() {
 				}
 			} else if netEventId == NetDnsRequest {
 
-				var pktMeta struct {
-					SrcIP    [16]byte
-					DestIP   [16]byte
-					SrcPort  uint16
-					DestPort uint16
-					Protocol uint8
-					_        [3]byte //padding
-				}
-				var pktLen uint32
-				err := binary.Read(dataBuff, binary.LittleEndian, &pktLen)
-				if err != nil {
-					t.handleError(err)
-					continue
-				}
-				var ifindex uint32
-				err = binary.Read(dataBuff, binary.LittleEndian, &ifindex)
-				if err != nil {
-					t.handleError(err)
-					continue
-				}
-
-				err = binary.Read(dataBuff, binary.LittleEndian, &pktMeta)
+				//var pktMeta struct {
+				//	SrcIP    [16]byte
+				//	DestIP   [16]byte
+				//	SrcPort  uint16
+				//	DestPort uint16
+				//	Protocol uint8
+				//	_        [3]byte //padding
+				//}
+				//var pktLen uint32
+				//err := binary.Read(dataBuff, binary.LittleEndian, &pktLen)
+				//if err != nil {
+				//	t.handleError(err)
+				//	continue
+				//}
+				//var ifindex uint32
+				//err = binary.Read(dataBuff, binary.LittleEndian, &ifindex)
+				//if err != nil {
+				//	t.handleError(err)
+				//	continue
+				//}
+				//
+				//err = binary.Read(dataBuff, binary.LittleEndian, &pktMeta)
+				//if err != nil {
+				//	t.handleError(err)
+				//	continue
+				//}
+				netPacket, err, pktLen, _ := t.parsePacketMetaData(dataBuff)
 				if err != nil {
 					t.handleError(err)
 					continue
@@ -202,45 +250,24 @@ func (t *Tracee) processNetEvents() {
 						break
 					}
 				}
-				requestMetaDeta, _ := ParseDnsMetaData(dataBytes[len(dataBytes)-28:])
+				requestMetaDeta, _ := ParseDnsMetaData(dataBytes[len(dataBytes)-20:])
 
 				fmt.Printf("%v  %-16s  %-7d  net_events/dns_request               Len: %d, SrcIP: %v, SrcPort: %d, DestIP: %v, DestPort: %d, Protocol: %d, Query: %s, Type: %s , Class %s \n",
 					timeStampObj,
 					comm,
 					hostTid,
 					pktLen,
-					netaddr.IPFrom16(pktMeta.SrcIP),
-					pktMeta.SrcPort,
-					netaddr.IPFrom16(pktMeta.DestIP),
-					pktMeta.DestPort,
-					pktMeta.Protocol,
+					netaddr.IPFrom16(netPacket.SrcIP),
+					netPacket.SrcPort,
+					netaddr.IPFrom16(netPacket.DestIP),
+					netPacket.DestPort,
+					netPacket.Protocol,
 					requestMetaDeta[0],
 					requestMetaDeta[1],
 					requestMetaDeta[2])
 
 			} else if netEventId == NetDnsResponse {
-				var pktMeta struct {
-					SrcIP    [16]byte
-					DestIP   [16]byte
-					SrcPort  uint16
-					DestPort uint16
-					Protocol uint8
-					_        [3]byte //padding
-				}
-				var pktLen uint32
-				err := binary.Read(dataBuff, binary.LittleEndian, &pktLen)
-				if err != nil {
-					t.handleError(err)
-					continue
-				}
-				var ifindex uint32
-				err = binary.Read(dataBuff, binary.LittleEndian, &ifindex)
-				if err != nil {
-					t.handleError(err)
-					continue
-				}
-
-				err = binary.Read(dataBuff, binary.LittleEndian, &pktMeta)
+				netPacket, err, pktLen, _ := t.parsePacketMetaData(dataBuff)
 				if err != nil {
 					t.handleError(err)
 					continue
@@ -292,11 +319,11 @@ func (t *Tracee) processNetEvents() {
 							comm,
 							hostTid,
 							pktLen,
-							netaddr.IPFrom16(pktMeta.SrcIP),
-							pktMeta.SrcPort,
-							netaddr.IPFrom16(pktMeta.DestIP),
-							pktMeta.DestPort,
-							pktMeta.Protocol,
+							netaddr.IPFrom16(netPacket.SrcIP),
+							netPacket.SrcPort,
+							netaddr.IPFrom16(netPacket.DestIP),
+							netPacket.DestPort,
+							netPacket.Protocol,
 							queryData[0],
 							queryData[1],
 							queryData[2],
@@ -314,11 +341,11 @@ func (t *Tracee) processNetEvents() {
 							comm,
 							hostTid,
 							pktLen,
-							netaddr.IPFrom16(pktMeta.SrcIP),
-							pktMeta.SrcPort,
-							netaddr.IPFrom16(pktMeta.DestIP),
-							pktMeta.DestPort,
-							pktMeta.Protocol,
+							netaddr.IPFrom16(netPacket.SrcIP),
+							netPacket.SrcPort,
+							netaddr.IPFrom16(netPacket.DestIP),
+							netPacket.DestPort,
+							netPacket.Protocol,
 							queryData[0],
 							queryData[1],
 							queryData[2],
