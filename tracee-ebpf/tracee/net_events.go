@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"github.com/google/gopacket/layers"
 	"time"
 
 	"github.com/google/gopacket"
@@ -71,7 +72,38 @@ func DnsPaseName(payload []byte) string {
 	return string(payload)
 }
 
-//func parseDnsResponseData()
+func parseDnsResponseData(dataBytes []byte, offset int32, queryAsked string) (DnsResponsePacketData, uint16) {
+	var dnsResponsePacket DnsResponsePacketData
+	ansMetaData, ansOffset := ParseDnsMetaData(dataBytes[offset:])
+	if ansMetaData[0] == "prev" {
+		ansMetaData[0] = queryAsked
+	}
+
+	offset += ansOffset
+	answerTtl := int32(binary.BigEndian.Uint32(dataBytes[offset+1 : offset+5]))
+	dataLen := binary.BigEndian.Uint16(dataBytes[offset+5 : offset+7]) // binary.LittleEndian.Uint16(dataBytes[offset+8:offset+10]) //dataBytes[offset+4]
+	dnsResponsePacket.answerData.ttl = int(answerTtl)
+	switch ansMetaData[1] {
+	case "CNAME":
+		//nameRecord = string(dataBytes[offset+7 : offset+7+(int32(dataLen))])
+		dnsResponsePacket.answerData.recordName = string(dataBytes[offset+7 : offset+7+(int32(dataLen))])
+	case "A (IPv4)":
+		responseAddr := [16]byte{0}
+		copy(responseAddr[:], dataBytes[offset+7:offset+11])
+		//addr = netaddr.IPFrom16(responseAddr)
+		dnsResponsePacket.answerData.ip = responseAddr
+	case "AAAA (IPv6)":
+		responseAddr := [16]byte{0}
+		copy(responseAddr[:], dataBytes[offset+7:offset+23])
+		//addr = netaddr.IPFrom16(responseAddr)
+		dnsResponsePacket.answerData.ip = responseAddr
+
+	}
+	dnsResponsePacket.answerData.answerType = ansMetaData[1]
+	dnsResponsePacket.answerData.answerClass = ansMetaData[2]
+
+	return dnsResponsePacket, dataLen
+}
 func (t Tracee) parsePacketMetaData(payload *bytes.Buffer) (pktMeta, error, uint32, int) {
 	var pktMetaData pktMeta
 	var pktLen uint32
@@ -114,7 +146,7 @@ func ParseDnsMetaData(payload []byte) ([3]string, int32) {
 				idx++
 			} else if payload[idx+1] == 0xc0 {
 				idx += 2
-				queryData[0] = "prev12"
+				queryData[0] = "prev"
 			} else {
 				queryData[0] = DnsPaseName(payload[1:idx])
 
@@ -221,9 +253,16 @@ func (t *Tracee) processNetEvents() {
 					t.handleError(err)
 					continue
 				}
+
 				dataBytes := dataBuff.Bytes()
-				dataBytes = cutEndNullbytes(dataBytes)
-				requestMetaData, _ := ParseDnsMetaData(dataBytes[len(dataBytes)-20:])
+				packet := gopacket.NewPacket(dataBytes, layers.LayerTypeEthernet, gopacket.Lazy)
+				dnsPacket := packet.Layer(layers.LayerTypeDNS)
+
+				//fmt.Printf("PACKET LAYER: %v\n", dnsPacket.LayerContents()[13:])
+				//fmt.Println(dnsPacket.LayerType())
+				//
+				//dataBytes = cutEndNullbytes(dataBytes)
+				requestMetaData, _ := ParseDnsMetaData(dnsPacket.LayerContents()[12:])
 				fmt.Printf("%v  %-16s  %-7d  net_events/dns_request               Len: %d, SrcIP: %v, SrcPort: %d, DestIP: %v, DestPort: %d, Protocol: %d, Query: %s, Type: %s , Class %s \n",
 					timeStampObj,
 					comm,
@@ -246,38 +285,20 @@ func (t *Tracee) processNetEvents() {
 				}
 
 				dataBytes := dataBuff.Bytes()
+				packet := gopacket.NewPacket(dataBytes, layers.LayerTypeEthernet, gopacket.Lazy)
+				dnsPacket := packet.Layer(layers.LayerTypeDNS)
+				fmt.Println("req payload : \n\n\n", dnsPacket.LayerContents())
 				dataBytes = cutEndNullbytes(dataBytes)
 				ansNumber := int(dataBytes[49])
 				//parse query metadata
-				queryData, offset := ParseDnsMetaData(dataBytes[54:])
+				queryData, offset := ParseDnsMetaData(dnsPacket.LayerContents()[12:])
 
 				offset += 54
 				//loop over the response answers
 				for i := 0; i < ansNumber; i++ {
-					ansMetaData, ansOffset := ParseDnsMetaData(dataBytes[offset:])
-					if ansMetaData[0] == "prev" {
-						ansMetaData[0] = queryData[0]
-					}
-					offset += ansOffset
-					TTL := int32(binary.BigEndian.Uint32(dataBytes[offset+1 : offset+5]))
-
-					dataLen := binary.BigEndian.Uint16(dataBytes[offset+5 : offset+7]) // binary.LittleEndian.Uint16(dataBytes[offset+8:offset+10]) //dataBytes[offset+4]
-
-					addr := netaddr.IP{}
-					nameRecord := ""
-					switch ansMetaData[1] {
-					case "CNAME":
-						nameRecord = string(dataBytes[offset+7 : offset+7+(int32(dataLen))])
-					case "A (IPv4)":
-						responseAddr := [4]byte{0}
-						copy(responseAddr[:], dataBytes[offset+7:offset+11])
-						addr = netaddr.IPFrom4(responseAddr)
-					case "AAAA (IPv6)":
-						responseAddr := [16]byte{0}
-						copy(responseAddr[:], dataBytes[offset+7:offset+23])
-						addr = netaddr.IPFrom16(responseAddr)
-					}
-					if ansMetaData[1] == "CNAME" {
+					dnsPacketData, dataLen := parseDnsResponseData(dataBytes, offset, queryData[0])
+					fmt.Printf("%s\n", dataBytes[offset:])
+					if dnsPacketData.answerData.answerType == "CNAME" {
 
 						fmt.Printf("%v  %-16s  %-7d  net_event/dns_response               Len: %d, SrcIP: %v, SrcPort: %d, DestIP: %v, DestPort: %d, Protocol: %d, Query: %s, Type: %s , Class: %s, Answer[%d]: Name:%v, Type: %v, Class: %v, record_name: %s, TTL: %v\n",
 							timeStampObj,
@@ -293,14 +314,14 @@ func (t *Tracee) processNetEvents() {
 							queryData[1],
 							queryData[2],
 							i+1,
-							ansMetaData[0],
-							ansMetaData[1],
-							ansMetaData[2],
-							nameRecord,
-							TTL)
+							dnsPacketData.answerData.recordName, // need to fix that
+							dnsPacketData.answerData.answerType,
+							dnsPacketData.answerData.answerClass,
+							dnsPacketData.answerData.recordName,
+							dnsPacketData.answerData.ttl)
 
 					} else {
-						fmt.Printf("%v  %-16s  %-7d  net_event/dns_response               Len: %d, SrcIP: %v, SrcPort: %d, DestIP: %v, DestPort: %d, Protocol: %d, Query: %s, Type: %s , Class: %s, Answer[%d]: Name:%v, Type: %v, Class: %v, Address: %-16s, TTL: %v\n",
+						fmt.Printf("%v  %-16s  %-7d  net_event/dns_response               Len: %d, SrcIP: %v, SrcPort: %d, DestIP: %v, DestPort: %d, Protocol: %d, Query: %s, Type: %s , Class: %s, Answer[%d]: Name:%v, Type: %v, Class: %v, Address: %v, TTL: %v\n",
 							timeStampObj,
 							comm,
 							hostTid,
@@ -314,11 +335,11 @@ func (t *Tracee) processNetEvents() {
 							queryData[1],
 							queryData[2],
 							i+1,
-							ansMetaData[0],
-							ansMetaData[1],
-							ansMetaData[2],
-							addr,
-							TTL)
+							dnsPacketData.answerData.recordName, // need to fix that
+							dnsPacketData.answerData.answerType,
+							dnsPacketData.answerData.answerClass,
+							netaddr.IPFrom16(dnsPacketData.answerData.ip),
+							dnsPacketData.answerData.ttl)
 					}
 					offset += int32(dataLen + 7)
 
