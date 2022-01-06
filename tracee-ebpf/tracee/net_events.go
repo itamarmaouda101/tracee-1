@@ -250,7 +250,7 @@ func setNetEvent(ts int, hostTid uint32, processName string, eventId int, eventN
 		ContainerID:         "0",
 		EventID:             int(eventId),
 		EventName:           eventName,
-		ArgsNum:             int(0),
+		ArgsNum:             len(args),
 		ReturnValue:         int(0),
 		Args:                args,
 		StackAddresses:      make([]uint64, 0, 0),
