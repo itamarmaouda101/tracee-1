@@ -22,7 +22,9 @@ func Print16BytesSliceIP(in []byte) string {
 	ip := net.IP(in)
 	return ip.String()
 }
-
+func isNetEvent(eventId int32) bool {
+	return eventId >= NetPacket && eventId <= MaxNetEventID
+}
 func (t *Tracee) parseArgs(event *external.Event) error {
 	for i := range event.Args {
 		if ptr, isUintptr := event.Args[i].Value.(uintptr); isUintptr {
@@ -178,7 +180,6 @@ func (t *Tracee) parseArgs(event *external.Event) error {
 			}
 		}
 	}
-
 	return nil
 }
 

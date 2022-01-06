@@ -191,16 +191,15 @@ Copyright (C) Aqua Security inc.
 #define HIDDEN_INODES                   1032
 #define MAX_EVENT_ID                    1033
 
-#define NET_PACKET                      0
-#define DEBUG_NET_SECURITY_BIND         1
-#define DEBUG_NET_UDP_SENDMSG           2
-#define DEBUG_NET_UDP_DISCONNECT        3
-#define DEBUG_NET_UDP_DESTROY_SOCK      4
-#define DEBUG_NET_UDPV6_DESTROY_SOCK    5
-#define DEBUG_NET_INET_SOCK_SET_STATE   6
-#define DEBUG_NET_TCP_CONNECT           7
-#define NET_DNS_REQUEST                 8
-#define NET_DNS_RESPONSE                9
+#define NET_PACKET                      4000
+#define DEBUG_NET_SECURITY_BIND         4001
+#define DEBUG_NET_UDP_SENDMSG           4002
+#define DEBUG_NET_UDP_DISCONNECT        4003
+#define DEBUG_NET_UDP_DESTROY_SOCK      4004
+#define DEBUG_NET_UDPV6_DESTROY_SOCK    4005
+#define DEBUG_NET_INET_SOCK_SET_STATE   4006
+#define DEBUG_NET_TCP_CONNECT           4007
+
 
 
 #define CONFIG_SHOW_SYSCALL             1
@@ -4276,49 +4275,6 @@ static __always_inline int tc_probe(struct __sk_buff *skb, bool ingress) {
     pkt.host_tid = net_ctx->host_tid;
     __builtin_memcpy(pkt.comm, net_ctx->comm, TASK_COMM_LEN);
 
-    //check if the packet is dns protocol
-    if ( pkt.protocol == IPPROTO_UDP && (__bpf_ntohs(pkt.src_port) == 53 || __bpf_ntohs(pkt.dst_port) == 53)) {
-
-            pkt.src_port = (__bpf_ntohs(pkt.src_port));
-            pkt.dst_port = (__bpf_ntohs(pkt.dst_port));
-
-            if (!skb_revalidate_data(skb, &head, &tail, l4_hdr_off + sizeof(struct udphdr))) {
-                        return TC_ACT_UNSPEC;
-            }
-
-            struct udphdr *udp = (void *)head + l4_hdr_off;
-            if (!skb_revalidate_data(skb, &head, &tail,sizeof(head)+l4_hdr_off+sizeof(struct udphdr)+sizeof(dns_hdr_t)))
-                return TC_ACT_UNSPEC;
-
-            dns_hdr_t *dns_hdr = (void *) head+ l4_hdr_off+sizeof(struct udphdr);// +sizeof(struct udphdr)+sizeof(uint64_t)+sizeof(uint32_t);
-            if (dns_hdr == NULL)
-                return 0;
-
-            if (pkt.src_port == 53 && dns_hdr->qr ==1)
-            {
-                dns_response_info_t *dns_response = (void *) head+ l4_hdr_off+sizeof(struct udphdr)+sizeof(dns_hdr);
-                u16 number_of_ans = __bpf_ntohs(dns_hdr->ans_count);
-                pkt.event_id = NET_DNS_RESPONSE;
-                uint8_t *data = head+ l4_hdr_off+sizeof(struct udphdr)+sizeof(dns_hdr);
-//                pkt.dns_data = *data;
-                u64 flagss = BPF_F_CURRENT_CPU;
-                flagss |= (u64)skb->len << 32;
-                bpf_perf_event_output(skb, &net_events, flagss, &pkt, sizeof(pkt));
-                return TC_ACT_UNSPEC;
-            }
-            if(pkt.dst_port == 53 && dns_hdr->qr ==0)
-            {
-                if (!skb_revalidate_data(skb, &head, &tail,sizeof(head)+l4_hdr_off+sizeof(struct udphdr)+sizeof(dns_hdr_t)+sizeof(u64)+sizeof(u16)))
-                    return TC_ACT_UNSPEC;
-                pkt.event_id = NET_DNS_REQUEST;
-                uint8_t *data = head+ l4_hdr_off+sizeof(struct udphdr)+sizeof(dns_hdr);
-//                pkt.dns_data = *data;
-            }
-
-            u64 flagss = BPF_F_CURRENT_CPU;
-            flagss |= (u64)skb->len << 32;
-            bpf_perf_event_output(skb, &net_events, flagss, &pkt, sizeof(pkt));
-        }
         pkt.event_id = NET_PACKET;
 
 
@@ -4333,8 +4289,8 @@ static __always_inline int tc_probe(struct __sk_buff *skb, bool ingress) {
     u64 flags = BPF_F_CURRENT_CPU;
     flags |= (u64)skb->len << 32;
     if (get_config(CONFIG_DEBUG_NET)){
-//        pkt.src_port = __bpf_ntohs(pkt.src_port);
-//        pkt.dst_port = __bpf_ntohs(pkt.dst_port);
+        pkt.src_port = __bpf_ntohs(pkt.src_port);
+        pkt.dst_port = __bpf_ntohs(pkt.dst_port);
         bpf_perf_event_output(skb, &net_events, flags, &pkt, sizeof(pkt));
     }
     else {
