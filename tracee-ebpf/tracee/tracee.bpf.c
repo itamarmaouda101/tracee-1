@@ -191,14 +191,14 @@ Copyright (C) Aqua Security inc.
 #define HIDDEN_INODES                   1032
 #define MAX_EVENT_ID                    1033
 
-#define NET_PACKET                      3000
-#define DEBUG_NET_SECURITY_BIND         3001
-#define DEBUG_NET_UDP_SENDMSG           3002
-#define DEBUG_NET_UDP_DISCONNECT        3003
-#define DEBUG_NET_UDP_DESTROY_SOCK      3004
-#define DEBUG_NET_UDPV6_DESTROY_SOCK    3005
-#define DEBUG_NET_INET_SOCK_SET_STATE   3006
-#define DEBUG_NET_TCP_CONNECT           3007
+#define NET_PACKET                      4000
+#define DEBUG_NET_SECURITY_BIND         4001
+#define DEBUG_NET_UDP_SENDMSG           4002
+#define DEBUG_NET_UDP_DISCONNECT        4003
+#define DEBUG_NET_UDP_DESTROY_SOCK      4004
+#define DEBUG_NET_UDPV6_DESTROY_SOCK    4005
+#define DEBUG_NET_INET_SOCK_SET_STATE   4006
+#define DEBUG_NET_TCP_CONNECT           4007
 
 
 

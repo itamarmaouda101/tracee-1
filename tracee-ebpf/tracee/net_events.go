@@ -193,29 +193,34 @@ func isIpv6(ip [16]byte) bool {
 	return true
 }
 func createNetworkArgs(packetmeta PktMeta) []external.Argument {
-	fmt.Println("\n\nsrc ip is: ipv6 %v ", isIpv6(packetmeta.SrcIP))
+	fmt.Println("\n\nsrc ip is: ipv6- ", isIpv6(packetmeta.SrcIP), "ip is ", packetmeta.SrcIP)
 	eventArgs := make([]external.Argument, 0, 0)
-	eventArgsMeta := make([]external.ArgMeta, 0, 0)
 	if isIpv6(packetmeta.SrcIP) {
-		eventArgsMeta = append(eventArgsMeta, external.ArgMeta{"src_ip", "[16]byte"})
+		eventArgs = append(eventArgs, external.Argument{
+			ArgMeta: external.ArgMeta{"src_ip", "[16]byte"},
+			Value:   packetmeta.SrcIP,
+		})
 	} else {
 		eventArgs = append(eventArgs, external.Argument{
 			ArgMeta: external.ArgMeta{"src_ip", "[4]byte"},
-			Value:   packetmeta.SrcIP[10:],
+			Value:   packetmeta.SrcIP[12:],
 		})
 	}
 	if isIpv6(packetmeta.DestIP) {
-		eventArgsMeta = append(eventArgsMeta, external.ArgMeta{"dst_ip", "[16]byte"})
+		eventArgs = append(eventArgs, external.Argument{
+			ArgMeta: external.ArgMeta{"dst_ip", "[16]byte"},
+			Value:   packetmeta.DestIP,
+		})
 	} else {
 		eventArgs = append(eventArgs, external.Argument{
 			ArgMeta: external.ArgMeta{"dst_ip", "[4]byte"},
-			Value:   packetmeta.SrcIP[10:],
+			Value:   packetmeta.SrcIP[12:],
 		})
 	}
-	eventArgsMeta = append(eventArgsMeta, external.ArgMeta{"dest_ip", "[16]byte"})
-	eventArgsMeta = append(eventArgsMeta, external.ArgMeta{"src_port", "uint16"})
-	eventArgsMeta = append(eventArgsMeta, external.ArgMeta{"dest_port", "uint16"})
-	eventArgsMeta = append(eventArgsMeta, external.ArgMeta{"protocol", "uint8"})
+	//eventArgsMeta = append(eventArgsMeta, external.ArgMeta{"dest_ip", "[16]byte"})
+	//eventArgsMeta = append(eventArgsMeta, external.ArgMeta{"src_port", "uint16"})
+	//eventArgsMeta = append(eventArgsMeta, external.ArgMeta{"dest_port", "uint16"})
+	//eventArgsMeta = append(eventArgsMeta, external.ArgMeta{"protocol", "uint8"})
 	eventArgs = append(eventArgs, external.Argument{
 		ArgMeta: external.ArgMeta{"src_port", "uint16"},
 		Value:   packetmeta.SrcPort,
@@ -231,7 +236,7 @@ func createNetworkArgs(packetmeta PktMeta) []external.Argument {
 
 	return eventArgs
 }
-func setNetEvent(ts int, hostTid uint32, processName string, eventId int, eventName string, meta PktMeta) external.Event {
+func setNetEvent(ts int, hostTid uint32, processName string, eventId int32, eventName string, meta PktMeta) external.Event {
 	args := createNetworkArgs(meta)
 
 	evt := external.Event{
@@ -269,7 +274,7 @@ func (t *Tracee) processNetEvents() {
 			}
 
 			timeStamp := binary.LittleEndian.Uint64(in[0:8])
-			netEventId := int(binary.LittleEndian.Uint32(in[8:12]))
+			netEventId := int32(binary.LittleEndian.Uint32(in[8:12]))
 			hostTid := binary.LittleEndian.Uint32(in[12:16])
 			processName := string(bytes.TrimRight(in[16:32], "\x00"))
 			dataBuff := bytes.NewBuffer(in[32:])

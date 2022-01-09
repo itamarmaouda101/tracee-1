@@ -79,7 +79,7 @@ const (
 )
 
 const (
-	NetPacket int = iota + 3000
+	NetPacket int32 = iota + 4000
 	DebugNetSecurityBind
 	DebugNetUdpSendmsg
 	DebugNetUdpDisconnect
@@ -87,8 +87,7 @@ const (
 	DebugNetUdpV6DestroySock
 	DebugNetInetSockSetState
 	DebugNetTcpConnect
-	NetDnsRequest
-	NetDnsResponse
+	MaxNetEventID
 )
 
 const Unique32BitSyscallsStartID = 3000

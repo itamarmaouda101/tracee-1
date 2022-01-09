@@ -22,7 +22,9 @@ func Print16BytesSliceIP(in []byte) string {
 	ip := net.IP(in)
 	return ip.String()
 }
-
+func isNetEvent(eventId int32) bool {
+	return eventId >= NetPacket && eventId <= MaxNetEventID
+}
 func (t *Tracee) parseArgs(event *external.Event) error {
 	for i := range event.Args {
 		if ptr, isUintptr := event.Args[i].Value.(uintptr); isUintptr {
@@ -177,7 +179,27 @@ func (t *Tracee) parseArgs(event *external.Event) error {
 				modeArg.Type = "string"
 			}
 		}
+		//case NetPacket:
+		//	fmt.Println("asdasdsasdNET PACKET")
+		//
 	}
+	//fmt.Println(1)
+	//fmt.Printf(" isNetEvent(event.EventID) retured %v, eventid is %v\n",  isNetEvent(int32(event.EventID)), event.EventID)
+	//if isNetEvent(int32(event.EventID)) {
+	//	fmt.Println("2")
+	//	if dstIp := getEventArg(event, "dst_ip"); dstIp != nil {
+	//		//handle as ipV4
+	//		fmt.Println("3")
+	//		if ip, is4Byte := dstIp.Value.([4]byte); is4Byte {
+	//			dstIp.Value =netaddr.IPFrom4(ip)
+	//			dstIp.Type = "string"
+	//			fmt.Println("adasd\n\n\n", dstIp.Value)
+	//		}else if ip, is16Byte := dstIp.Value.([4]byte); is16Byte {
+	//			dstIp.Value =netaddr.IPFrom4(ip)
+	//			dstIp.Type = "string"
+	//		}
+	//	}
+	//}
 
 	return nil
 }
