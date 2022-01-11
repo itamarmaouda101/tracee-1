@@ -29,7 +29,9 @@ func (t *Tracee) processNetEvents() {
 
 			// timeStamp is nanoseconds since system boot time
 			timeStampObj := time.Unix(0, int64(timeStamp+t.bootTime))
-
+			if netEventId == NetPacketIrc {
+				fmt.Println("aadasdasdad\n\n\n")
+			}
 			if netEventId == NetPacket {
 				var pktLen uint32
 				err := binary.Read(dataBuff, binary.LittleEndian, &pktLen)

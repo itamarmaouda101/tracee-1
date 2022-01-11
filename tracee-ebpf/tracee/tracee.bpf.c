@@ -198,6 +198,8 @@ Copyright (C) Aqua Security inc.
 #define DEBUG_NET_UDPV6_DESTROY_SOCK    5
 #define DEBUG_NET_INET_SOCK_SET_STATE   6
 #define DEBUG_NET_TCP_CONNECT           7
+#define NET_PACKET_IRC                  8
+
 
 #define CONFIG_SHOW_SYSCALL             1
 #define CONFIG_EXEC_ENV                 2
@@ -2036,6 +2038,73 @@ static __always_inline unsigned short get_inode_mode_from_fd(u64 fd)
     struct inode *f_inode = READ_KERN(f->f_inode);
     return READ_KERN(f_inode->i_mode);
 }
+
+static __always_inline bool is_ascii(char * payload){
+    for (int i =0;i <sizeof(payload); i++){
+        if (payload[i] <32 || payload[i] >125)
+            return false;
+    }
+    return true;
+
+}
+
+/*============================== NETWORK HELPER FUNCTIONS ===============================*/
+
+static __always_inline bool skb_revalidate_data(struct __sk_buff *skb, uint8_t **head, uint8_t **tail, const u32 offset) {
+    if (*head + offset > *tail) {
+        if (bpf_skb_pull_data(skb, offset) < 0) {
+            return false;
+        }
+
+        *head = (uint8_t *)(long)skb->data;
+        *tail = (uint8_t *)(long)skb->data_end;
+
+        if (*head + offset > *tail) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/* the function checks if a given packet is an IRC packet
+** we assume that the packet isn't other plain text protocol such as HTTP
+** Note: use this function as the last protocol check to verify the packet isn't the other packet types
+** the function returns:
+**    0 if it isn't irc
+**    1 IRC request
+**    2 IRC response
+*/
+static __always_inline int is_irc_protocl(struct __sk_buff * skb, uint32_t l4_hdr_off, struct tcphdr tcp_header, uint8_t **head, uint8_t **tail){
+//    if (!skb_revalidate_data(skb, head, tail ,sizeof(head)+l4_hdr_off+sizeof(struct tcphdr)+10*sizeof(char))){
+//        return 0;
+//    }
+//    void* payload_start =(char*) (void *) head+ l4_hdr_off+sizeof(struct tcphdr);
+    if (1)
+    {
+     if (tcp_header.dest>=6665 && tcp_header.dest<=6669)
+        return 1;
+     if (tcp_header.source>=6665 && tcp_header.source<=6669)
+        return 1;
+    }
+    return 0;
+}
+
+//static __always_inline void handle_protocol_packet(net_packet_t *pkt, u32 event_id){
+//      pkt->event_id= event_id;
+//     if (get_config(CONFIG_DEBUG_NET)){
+//            pkt->src_port = __bpf_ntohs(pkt.src_port);
+//            pkt->dst_port = __bpf_ntohs(pkt.dst_port);
+//            bpf_perf_event_output(skb, &net_events, flags, &pkt, sizeof(pkt));
+//        }
+//        else {
+//            // If not debugging, only send the minimal required data to save the
+//            // packet. This will be the timestamp (u64), net event_id (u32),
+//            // host_tid (u32), comm (16 bytes), packet len (u32), and ifindex (u32)
+//            bpf_perf_event_output(skb, &net_events, flags, &pkt, 40);
+//        }
+//}
+
 
 /*============================== SYSCALL HOOKS ===============================*/
 
@@ -4097,23 +4166,6 @@ int BPF_KPROBE(trace_security_inode_mknod)
     return events_perf_submit(&data, SECURITY_INODE_MKNOD, 0);
 }
 
-static __always_inline bool skb_revalidate_data(struct __sk_buff *skb, uint8_t **head, uint8_t **tail, const u32 offset) {
-    if (*head + offset > *tail) {
-        if (bpf_skb_pull_data(skb, offset) < 0) {
-            return false;
-        }
-
-        *head = (uint8_t *)(long)skb->data;
-        *tail = (uint8_t *)(long)skb->data_end;
-
-        if (*head + offset > *tail) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
 static __always_inline int tc_probe(struct __sk_buff *skb, bool ingress) {
     // Note: if we are attaching to docker0 bridge, the ingress bool argument is actually egress
     uint8_t *head = (uint8_t *)(long)skb->data;
@@ -4180,6 +4232,20 @@ static __always_inline int tc_probe(struct __sk_buff *skb, bool ingress) {
 
         pkt.src_port = tcp->source;
         pkt.dst_port = tcp->dest;
+
+         if (is_irc_protocl(skb, l4_hdr_off, *tcp, &head, &tail) == 1){
+//        if (tcp->dest>=6665 && tcp->dest>=6669){
+
+             u64 flags = BPF_F_CURRENT_CPU;
+             flags |= (u64)skb->len << 32;
+
+            pkt.event_id = NET_PACKET_IRC;
+            pkt.src_port = __bpf_ntohs(pkt.src_port);
+            pkt.dst_port = __bpf_ntohs(pkt.dst_port);
+            bpf_perf_event_output(skb, &net_events, flags, &pkt, sizeof(pkt));
+
+         }
+          pkt.event_id = NET_PACKET;
     } else if (pkt.protocol == IPPROTO_UDP) {
         if (!skb_revalidate_data(skb, &head, &tail, l4_hdr_off + sizeof(struct udphdr))) {
             return TC_ACT_UNSPEC;
@@ -4248,7 +4314,6 @@ static __always_inline int tc_probe(struct __sk_buff *skb, bool ingress) {
         // host_tid (u32), comm (16 bytes), packet len (u32), and ifindex (u32)
         bpf_perf_event_output(skb, &net_events, flags, &pkt, 40);
     }
-
     return TC_ACT_UNSPEC;
 }
 
