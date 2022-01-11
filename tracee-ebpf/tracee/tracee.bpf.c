@@ -2041,7 +2041,7 @@ static __always_inline unsigned short get_inode_mode_from_fd(u64 fd)
 
 static __always_inline bool is_ascii(char * payload){
     for (int i =0;i <sizeof(payload); i++){
-        if (payload[i] <32 || payload[i] >125)
+        if ((int)payload[i] <32 || (int)payload[i] >125)
             return false;
     }
     return true;
@@ -2076,15 +2076,15 @@ static __always_inline bool skb_revalidate_data(struct __sk_buff *skb, uint8_t *
 **    2 IRC response
 */
 static __always_inline int is_irc_protocl(struct __sk_buff * skb, uint32_t l4_hdr_off, struct tcphdr tcp_header, uint8_t **head, uint8_t **tail){
-//    if (!skb_revalidate_data(skb, head, tail ,sizeof(head)+l4_hdr_off+sizeof(struct tcphdr)+10*sizeof(char))){
-//        return 0;
-//    }
+    if (!skb_revalidate_data(skb, head, tail ,l4_hdr_off+sizeof(struct tcphdr))){
+        return TC_ACT_UNSPEC;
+    }
 //    void* payload_start =(char*) (void *) head+ l4_hdr_off+sizeof(struct tcphdr);
     if (1)
     {
-     if (tcp_header.dest>=6665 && tcp_header.dest<=6669)
+     if (__bpf_ntohs(tcp_header.dest)>=6665 && __bpf_ntohs(tcp_header.dest)<=6669)
         return 1;
-     if (tcp_header.source>=6665 && tcp_header.source<=6669)
+     if (__bpf_ntohs(tcp_header.source)>=6665 && __bpf_ntohs(tcp_header.source<=6669))
         return 1;
     }
     return 0;
@@ -4240,8 +4240,8 @@ static __always_inline int tc_probe(struct __sk_buff *skb, bool ingress) {
              flags |= (u64)skb->len << 32;
 
             pkt.event_id = NET_PACKET_IRC;
-            pkt.src_port = __bpf_ntohs(pkt.src_port);
-            pkt.dst_port = __bpf_ntohs(pkt.dst_port);
+//            pkt.src_port = __bpf_ntohs(pkt.src_port);
+//            pkt.dst_port = __bpf_ntohs(pkt.dst_port);
             bpf_perf_event_output(skb, &net_events, flags, &pkt, sizeof(pkt));
 
          }
