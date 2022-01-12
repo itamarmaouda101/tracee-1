@@ -74,7 +74,7 @@ func isASCII(s string) bool {
 	}
 	return true
 }
-func analyzeLayerTypeIRC(ircMessage *irc.Message) {
+func analyzeLayerTypeIRC(ircMessage *irc.Message) (string, []string) {
 	fmt.Println(1)
 	// check: 1) command len <=50. 2) command is ascii. 3) no more than 15 parameters
 	if len(ircMessage.Command) <= ircCommandMaxLen && isASCII(ircMessage.Command) && len(ircMessage.Params) <= ircParamMaxLen {
@@ -83,13 +83,15 @@ func analyzeLayerTypeIRC(ircMessage *irc.Message) {
 
 		_, err := strconv.Atoi(ircMessage.Command)
 		if isASCII(ircMessage.Params[0]) && (ircCommands[ircMessage.Command] || err == nil) {
-			fmt.Println(3)
-			fmt.Printf("IRC detected!\nCommand: %v, Parameters: \n", ircMessage.Command)
-			for idx, param := range ircMessage.Params {
-				fmt.Printf("param [%d]: %v\n", idx, param)
-			}
+			//fmt.Println(3)
+			//fmt.Printf("IRC detected!\nCommand: %v, Parameters: \n", ircMessage.Command)
+			//for idx, param := range ircMessage.Params {
+			//	fmt.Printf("param [%d]: %v\n", idx, param)
+			//}
+			return ircMessage.Command, ircMessage.Params
 		}
 	}
+	return "", nil
 }
 
 func (t *Tracee) processNetEvents() {
@@ -160,7 +162,19 @@ func (t *Tracee) processNetEvents() {
 						//fmt.Println("potensial IRC: ", dataBuff.Bytes()[114:])
 						if len(tcp.Payload) > 0 {
 							message := irc.ParseMessage(string(tcp.Payload))
-							analyzeLayerTypeIRC(message)
+							cmd, params := analyzeLayerTypeIRC(message)
+							fmt.Printf("%v  %-16s  %-7d  IRC_PACKET               Len: %d, SrcIP: %v, SrcPort: %d, DestIP: %v, DestPort: %d, Protocol: %d, cmd: %v, parms: %v\n",
+								timeStampObj,
+								comm,
+								hostTid,
+								pktLen,
+								netaddr.IPFrom16(pktMeta.SrcIP),
+								pktMeta.SrcPort,
+								netaddr.IPFrom16(pktMeta.DestIP),
+								pktMeta.DestPort,
+								pktMeta.Protocol,
+								cmd,
+								params)
 						}
 
 					}
