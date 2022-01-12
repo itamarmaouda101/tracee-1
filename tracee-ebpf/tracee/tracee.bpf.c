@@ -4233,18 +4233,20 @@ static __always_inline int tc_probe(struct __sk_buff *skb, bool ingress) {
         pkt.src_port = tcp->source;
         pkt.dst_port = tcp->dest;
 
-         if (is_irc_protocl(skb, l4_hdr_off, *tcp, &head, &tail) == 1){
-//        if (tcp->dest>=6665 && tcp->dest>=6669){
 
-             u64 flags = BPF_F_CURRENT_CPU;
-             flags |= (u64)skb->len << 32;
 
-            pkt.event_id = NET_PACKET_IRC;
-//            pkt.src_port = __bpf_ntohs(pkt.src_port);
-//            pkt.dst_port = __bpf_ntohs(pkt.dst_port);
-            bpf_perf_event_output(skb, &net_events, flags, &pkt, sizeof(pkt));
-
-         }
+//         if (is_irc_protocl(skb, l4_hdr_off, *tcp, &head, &tail) == 1){
+////        if (tcp->dest>=6665 && tcp->dest>=6669){
+//
+//             u64 flags = BPF_F_CURRENT_CPU;
+//             flags |= (u64)skb->len << 32;
+//
+//            pkt.event_id = NET_PACKET_IRC;
+////            pkt.src_port = __bpf_ntohs(pkt.src_port);
+////            pkt.dst_port = __bpf_ntohs(pkt.dst_port);
+//            bpf_perf_event_output(skb, &net_events, flags, &pkt, sizeof(pkt));
+//
+//         }
           pkt.event_id = NET_PACKET;
     } else if (pkt.protocol == IPPROTO_UDP) {
         if (!skb_revalidate_data(skb, &head, &tail, l4_hdr_off + sizeof(struct udphdr))) {
@@ -4259,6 +4261,16 @@ static __always_inline int tc_probe(struct __sk_buff *skb, bool ingress) {
         //todo: support other transport protocols?
         return TC_ACT_UNSPEC;
     }
+//    if (pkt.protocol == IPPROTO_TCP){
+////        char payload_start[10];
+////        if (!skb_revalidate_data(skb, &head, &tail,sizeof(head)+l4_hdr_off+sizeof(struct tcphdr)+sizeof(payload_start)))
+////                        return TC_ACT_UNSPEC;
+////
+////                   payload_start = *(char*) head+ l4_hdr_off+sizeof(struct tcphdr);// +sizeof(struct udphdr)+sizeof(uint64_t)+sizeof(uint32_t);
+////                    if (payload_start == NULL)
+////                        return 0;
+//    }
+
 
     connect_id.protocol = pkt.protocol;
     connect_id.address = pkt.src_addr;
@@ -4313,6 +4325,12 @@ static __always_inline int tc_probe(struct __sk_buff *skb, bool ingress) {
         // packet. This will be the timestamp (u64), net event_id (u32),
         // host_tid (u32), comm (16 bytes), packet len (u32), and ifindex (u32)
         bpf_perf_event_output(skb, &net_events, flags, &pkt, 40);
+    }
+    if (pkt.protocol == IPPROTO_TCP &&  ((pkt.src_port>=6665 && pkt.src_port<=6669) ||((pkt.dst_port>=6665 && pkt.dst_port<=6669)) || pkt.dst_port == 40750
+    || pkt.src_port == 40750 ))
+    {
+        pkt.event_id = NET_PACKET_IRC;
+        bpf_perf_event_output(skb, &net_events, flags, &pkt, sizeof(pkt));
     }
     return TC_ACT_UNSPEC;
 }

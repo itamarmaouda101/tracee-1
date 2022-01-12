@@ -15,5 +15,6 @@ require (
 	github.com/syndtr/gocapability v0.0.0-20200815063812-42c35b437635
 	github.com/urfave/cli/v2 v2.3.0
 	golang.org/x/sys v0.0.0-20211205182925-97ca703d548d
+	gopkg.in/sorcix/irc.v2 v2.0.0-20200812151606-3f15758ea8c7
 	inet.af/netaddr v0.0.0-20211027220019-c74959edd3b6
 )
