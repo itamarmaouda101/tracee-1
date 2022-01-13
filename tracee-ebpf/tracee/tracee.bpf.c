@@ -17,6 +17,7 @@ Copyright (C) Aqua Security inc.
 #include <linux/binfmts.h>
 #include <linux/cred.h>
 #include <linux/sched.h>
+#include <linux/signal.h>
 #include <linux/fs.h>
 #include <linux/mm_types.h>
 #include <linux/mount.h>
@@ -268,8 +269,7 @@ Copyright (C) Aqua Security inc.
 #define MAX_BIN_CHUNKS                  110
 #endif
 
-#define IOCTL_CMD_VEREFICTION           65
-#define HOOKED_STSCALLS_TO_CHECK        10
+#define IOCTL_SYSCALL_HOOK              65
 
 /*================================ eBPF KCONFIGs =============================*/
 
@@ -402,10 +402,12 @@ typedef struct syscall_data {
     unsigned long ts;              // Timestamp of syscall entry
     unsigned long ret;             // Syscall ret val. May be used by syscall exit tail calls.
 } syscall_data_t;
+
 typedef struct hooked_syscall {
-    int syscall_number;
-    u64 addr;
+    int syscall_num;
+    u64 syscall_addr;
 } hooked_syscall_t;
+
 typedef struct bin_args {
     u8 type;
     u8 metadata[SEND_META_SIZE];
@@ -549,13 +551,13 @@ BPF_HASH(mnt_ns_filter, u64, u32);                      // filter events by moun
 BPF_HASH(pid_ns_filter, u64, u32);                      // filter events by pid namespace id
 BPF_HASH(uts_ns_filter, string_filter_t, u32);          // filter events by uts namespace name
 BPF_HASH(comm_filter, string_filter_t, u32);            // filter events by command name
-BPF_HASH(bin_args_map, u64, bin_args_t);                // persist args for send_bin fucntion
+BPF_HASH(bin_args_map, u64, bin_args_t);                // persist args for send_bin funtion
 BPF_HASH(sys_32_to_64_map, u32, u32);                   // map 32bit to 64bit syscalls
 BPF_HASH(params_types_map, u32, u64);                   // encoded parameters types for event
 BPF_HASH(process_tree_map, u32, u32);                   // filter events by the ancestry of the traced process
-BPF_HASH(code_boundaries_map, int, u64);                // Used to pass kernel core text section boundaries
-BPF_HASH(syscall_table_addr_map, int, u64);             // Used to hold the syscall table address
-BPF_HASH(hooked_syscalls_map, int, hooked_syscall_t);     // Used to hold the hooked syscall data
+BPF_HASH(code_boundaries_map, int, u64);                // kernel core text section boundaries
+BPF_HASH(syscall_table_addr_map, int, u64);             // syscall addresses table
+BPF_HASH(hooked_syscalls_map, int, hooked_syscall_t);   // hooked syscalls discovered
 BPF_LRU_HASH(sock_ctx_map, u64, net_ctx_ext_t);         // socket address to process context
 BPF_LRU_HASH(network_map, local_net_id_t, net_ctx_t);   // network identifier to process context
 BPF_ARRAY(file_filter, path_filter_t, 3);               // filter vfs_write events
@@ -2511,13 +2513,14 @@ int tracepoint__sched__sched_process_exit(struct bpf_raw_tracepoint_args *ctx)
     bpf_map_delete_elem(&syscall_data_map, &data.context.host_tid);
 
     int proc_tree_filter_set = get_config(CONFIG_PROC_TREE_FILTER);
-    if (proc_tree_filter_set) {
-        // Check number of threads in thread group to determine if this is last one
-        struct task_struct *task = (struct task_struct *)bpf_get_current_task();
-        struct task_struct *group_leader = READ_KERN(task->group_leader);
-        struct list_head thread_group_head = READ_KERN(group_leader->thread_group);
-        struct list_head *next = READ_KERN(thread_group_head.next);
-        if (GET_FIELD_ADDR(group_leader->thread_group) == next) {
+
+    bool group_dead = false;
+    struct task_struct *task = data.task;
+    struct signal_struct *signal = READ_KERN(task->signal);
+    atomic_t live = READ_KERN(signal->live);
+    if (live.counter == 0) {
+        group_dead = true;
+        if (proc_tree_filter_set) {
             bpf_map_delete_elem(&process_tree_map, &data.context.host_pid);
         }
     }
@@ -2528,6 +2531,7 @@ int tracepoint__sched__sched_process_exit(struct bpf_raw_tracepoint_args *ctx)
     long exit_code = get_task_exit_code(data.task);
 
     save_to_submit_buf(&data, (void*)&exit_code, sizeof(long), 0);
+    save_to_submit_buf(&data, (void*)&group_dead, sizeof(bool), 1);
 
     return events_perf_submit(&data, SCHED_PROCESS_EXIT, 0);
 }
@@ -2561,6 +2565,7 @@ int tracepoint__sched__sched_switch(struct bpf_raw_tracepoint_args *ctx)
 
     return events_perf_submit(&data, SCHED_SWITCH, 0);
 }
+
 SEC("kprobe/filldir64")
 int BPF_KPROBE(trace_filldir64)
 {
@@ -2580,79 +2585,107 @@ int BPF_KPROBE(trace_filldir64)
     return 0;
 }
 
-/*this event will trigger by tracee itself using ioctl syscalls
- to verify it is out specific call of ioctl, tracee check the following things:
- 1. the syscall called from tracee
- 2. tracee triggers ioctl with specific number and then check it, which is: IOCTL_CMD_VEREFICTION
- 3. in event_processor we check only one time of detect_hooked_syscall event
-*/
 SEC("kprobe/security_file_ioctl")
 int BPF_KPROBE(trace_security_file_ioctl)
 {
     event_data_t data = {};
+
     if (!init_event_data(&data, ctx))
         return 0;
 
     if (get_config(CONFIG_TRACEE_PID) != data.context.host_pid)
         return 0;
-    int cmd = PT_REGS_PARM2(ctx);
 
-    if (cmd != IOCTL_CMD_VEREFICTION )
+    unsigned int cmd = PT_REGS_PARM2(ctx);
+
+    // TODO: you should create an inline function to deal with
+    // IOCTL_SYSCALL_HOOK because we might need to use security_file_ioctl
+    // kprobe for something else as well:
+    //
+    // if (cmd == IOCTL_SYSCALL_HOOK) { call function };
+    //
+    if (cmd != IOCTL_SYSCALL_HOOK)
         return 0;
 
-    int key =0;
-    u64* syscall_tableP = bpf_map_lookup_elem(&syscall_table_addr_map, (void *)&key);
-    u64* stextP = bpf_map_lookup_elem(&code_boundaries_map, (void *)&key);
+    int key = 0;
+
+    u64 *table_ptr = bpf_map_lookup_elem(&syscall_table_addr_map, (void *)&key);
+    if (table_ptr == NULL)
+        return 0;
+
+    u64 *start_ptr = bpf_map_lookup_elem(&code_boundaries_map, (void *)&key);
+    if (start_ptr == NULL)
+        return 0;
+
     key++;
-    u64 * etextP = bpf_map_lookup_elem(&code_boundaries_map, (void *)&key);
-
-    if (syscall_tableP == NULL)
+    u64 *end_ptr= bpf_map_lookup_elem(&code_boundaries_map, (void *)&key);
+    if (end_ptr == NULL)
         return 0;
-    if (stextP == NULL)
-        return 0;
-    if (etextP == NULL)
-        return 0;
-    unsigned long *syscall_table_addr = (unsigned long*)*syscall_tableP;
-    unsigned long stext = *stextP;
-    unsigned long etext = *etextP;
-    unsigned long syscall_addr =0;
 
-    // checking the syscalls:
-    // read, write, open, close
-    // kill, ioctl, getdents, getdents64,socket
-    // execve, execveat , ptrace ,bpf
+    unsigned long *syscall_table_addr = (unsigned long*) *table_ptr;
+    unsigned long stext = *start_ptr;
+    unsigned long etext = *end_ptr;
 
-
-    //list of all sysaclls number we want to check
 #if defined(bpf_target_x86)
-    int syscalls_to_check[] = {0, 1, 2, 3, 16, 62, 78, 217, 41, 59, 322, 101, 321};
+    int syscalls_to_check[] = {
+        0,          // read
+        1,          // write
+        2,          // open
+        3,          // close
+        16,         // ioctl
+        41,         // socket
+        59,         // execve
+        62,         // kill
+        78,         // getdents
+        101,        // ptrace
+        217,        // getdents64
+        321,        // bpf
+        322         // execveat
+    };
 #elif defined(bpf_target_arm64)
-     int syscalls_to_check[] = {3, 4, 5, 6, 11, 26, 37, 141, 217, 281, 322, 386, 387};
+    int syscalls_to_check[] = {
+        63,         // read
+        64,         // write
+                    // open (not present)
+        57,         // close
+        29,         // ioctl
+        198,        // socket
+        221,        // execve
+        129,        // kill
+                    // getdents (not present)
+        117,        // ptrace
+        61,         // getdents64
+        280,        // bpf
+        281         // execveat
+    };
 #endif
 
+    int j=0;
+    int snum;                // syscall_number
+    unsigned long saddr = 0; // syscall address
 
-
-    int i=0 ,syscall_number;
     #pragma unroll
-    for(int syscall_index=0;syscall_index<HOOKED_STSCALLS_TO_CHECK;syscall_index++)
-    {
-        syscall_number = syscalls_to_check[syscall_index];
-        syscall_addr = READ_KERN(syscall_table_addr[syscall_number]);
-        if (syscall_addr == 0)
+    for(int i = 0; i < sizeof(syscalls_to_check)/4; i++) {
+        snum = syscalls_to_check[i];
+        saddr = READ_KERN(syscall_table_addr[snum]);
+
+        if (saddr == 0)
             continue;
 
-        if(!((syscall_addr >= stext)&& (syscall_addr < etext)))
-        {
-            hooked_syscall_t hooked_syscall = {syscall_number, syscall_addr};
-            bpf_map_update_elem(&hooked_syscalls_map, &i, &hooked_syscall, BPF_ANY);
-            i++;
+        // syscall address MUST BE inside kernel text segment boundaries
+
+        if(!((saddr >= stext) && (saddr < etext))) {
+            hooked_syscall_t hooked_syscall = {snum, saddr};
+            bpf_map_update_elem(&hooked_syscalls_map, &j, &hooked_syscall, BPF_ANY);
+            j++;
         }
     }
-    if (i !=0)
-            events_perf_submit(&data, DETECT_HOOKED_SYSCALLS, 0);
+
+    if (j > 0)
+        events_perf_submit(&data, DETECT_HOOKED_SYSCALLS, 0);
+
     return 0;
 }
-
 
 SEC("kprobe/do_exit")
 int BPF_KPROBE(trace_do_exit)

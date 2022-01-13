@@ -125,7 +125,6 @@ func (t *Tracee) processEvent(event *external.Event) error {
 			t.writtenFiles[fileName] = filePath
 		}
 	case SchedProcessExecEventID:
-
 		//cache this pid by it's mnt ns
 		if event.ProcessID == 1 {
 			t.pidsInMntns.ForceAddBucketItem(uint32(event.MountNS), uint32(event.HostProcessID))
@@ -242,6 +241,7 @@ func (t *Tracee) processEvent(event *external.Event) error {
 			hookedSyscallNumberMap, err := t.bpfModule.GetMap("hooked_syscalls_map")
 			if err == nil {
 				hookedSyscallData := make([]HookedSyscallData, 0, 0)
+
 				for i := range [hoookedSyscallsToCheck]int{} {
 					syscallDataBytes, err := hookedSyscallNumberMap.GetValue(unsafe.Pointer(&i))
 					if err != nil {
@@ -251,7 +251,7 @@ func (t *Tracee) processEvent(event *external.Event) error {
 					syscallAddr := binary.LittleEndian.Uint64(syscallDataBytes[8:16])
 					syscallModule, err := getModuleOwnerBySymbol(syscallAddr)
 					if err != nil {
-						t.handleError(err)
+						return err
 					}
 					event, _ := EventsDefinitions[int32(syscallNum)]
 					syscallName := event.Name
