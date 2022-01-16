@@ -3,6 +3,7 @@ package tracee
 import (
 	"encoding/binary"
 	"fmt"
+	"inet.af/netaddr"
 	"net"
 
 	"github.com/aquasecurity/libbpfgo/helpers"
@@ -179,27 +180,29 @@ func (t *Tracee) parseArgs(event *external.Event) error {
 				modeArg.Type = "string"
 			}
 		}
-		//case NetPacket:
-		//	fmt.Println("asdasdsasdNET PACKET")
-		//
+	case NetPacket:
+		fmt.Println("AAAAAA PACKET")
+
 	}
 	//fmt.Println(1)
 	//fmt.Printf(" isNetEvent(event.EventID) retured %v, eventid is %v\n",  isNetEvent(int32(event.EventID)), event.EventID)
-	//if isNetEvent(int32(event.EventID)) {
-	//	fmt.Println("2")
-	//	if dstIp := getEventArg(event, "dst_ip"); dstIp != nil {
-	//		//handle as ipV4
-	//		fmt.Println("3")
-	//		if ip, is4Byte := dstIp.Value.([4]byte); is4Byte {
-	//			dstIp.Value =netaddr.IPFrom4(ip)
-	//			dstIp.Type = "string"
-	//			fmt.Println("adasd\n\n\n", dstIp.Value)
-	//		}else if ip, is16Byte := dstIp.Value.([4]byte); is16Byte {
-	//			dstIp.Value =netaddr.IPFrom4(ip)
-	//			dstIp.Type = "string"
-	//		}
-	//	}
-	//}
+	if isNetEvent(int32(event.EventID)) {
+		fmt.Println("2")
+		if dstIp := getEventArg(event, "dst_ip"); dstIp != nil {
+			//handle as ipV4
+			fmt.Println("3")
+			if ip, is4Byte := dstIp.Value.([4]byte); is4Byte {
+				dstIp.Value = netaddr.IPFrom4(ip)
+				dstIp.Type = "string"
+				fmt.Println("BBB\n\n\n", dstIp.Value)
+			} else if ip, is16Byte := dstIp.Value.([4]byte); is16Byte {
+				dstIp.Value = netaddr.IPFrom4(ip)
+				dstIp.Type = "string"
+				fmt.Println("BBB\n\n\n", dstIp.Value)
+
+			}
+		}
+	}
 
 	return nil
 }
