@@ -193,34 +193,33 @@ func isIpv6(ip [16]byte) bool {
 	return true
 }
 func createNetworkArgs(packetmeta PktMeta) []external.Argument {
-	fmt.Println("\n\nsrc ip is: ipv6- ", isIpv6(packetmeta.SrcIP), "ip is ", packetmeta.SrcIP)
 	eventArgs := make([]external.Argument, 0, 0)
 	if isIpv6(packetmeta.SrcIP) {
 		eventArgs = append(eventArgs, external.Argument{
-			ArgMeta: external.ArgMeta{"src_ip", "[16]byte"},
-			Value:   packetmeta.SrcIP,
+			ArgMeta: external.ArgMeta{"src_ip", "string"},
+			Value:   netaddr.IPFrom16(packetmeta.SrcIP).String(),
 		})
 	} else {
+		var ip [4]byte
+		copy(ip[:], packetmeta.SrcIP[12:])
 		eventArgs = append(eventArgs, external.Argument{
-			ArgMeta: external.ArgMeta{"src_ip", "[4]byte"},
-			Value:   packetmeta.SrcIP[12:],
+			ArgMeta: external.ArgMeta{"src_ip", "string"},
+			Value:   netaddr.IPFrom4(ip).String(),
 		})
 	}
 	if isIpv6(packetmeta.DestIP) {
 		eventArgs = append(eventArgs, external.Argument{
-			ArgMeta: external.ArgMeta{"dst_ip", "[16]byte"},
-			Value:   packetmeta.DestIP,
+			ArgMeta: external.ArgMeta{"dst_ip", "string"},
+			Value:   netaddr.IPFrom16(packetmeta.DestIP).String(),
 		})
 	} else {
+		var ip [4]byte
+		copy(ip[:], packetmeta.SrcIP[12:])
 		eventArgs = append(eventArgs, external.Argument{
-			ArgMeta: external.ArgMeta{"dst_ip", "[4]byte"},
-			Value:   packetmeta.SrcIP[12:],
+			ArgMeta: external.ArgMeta{"dst_ip", "string"},
+			Value:   netaddr.IPFrom4(ip).String(),
 		})
 	}
-	//eventArgsMeta = append(eventArgsMeta, external.ArgMeta{"dest_ip", "[16]byte"})
-	//eventArgsMeta = append(eventArgsMeta, external.ArgMeta{"src_port", "uint16"})
-	//eventArgsMeta = append(eventArgsMeta, external.ArgMeta{"dest_port", "uint16"})
-	//eventArgsMeta = append(eventArgsMeta, external.ArgMeta{"protocol", "uint8"})
 	eventArgs = append(eventArgs, external.Argument{
 		ArgMeta: external.ArgMeta{"src_port", "uint16"},
 		Value:   packetmeta.SrcPort,
