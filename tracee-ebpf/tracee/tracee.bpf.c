@@ -191,14 +191,14 @@ Copyright (C) Aqua Security inc.
 #define HIDDEN_INODES                   1032
 #define MAX_EVENT_ID                    1033
 
-#define NET_PACKET                      0
-#define DEBUG_NET_SECURITY_BIND         1
-#define DEBUG_NET_UDP_SENDMSG           2
-#define DEBUG_NET_UDP_DISCONNECT        3
-#define DEBUG_NET_UDP_DESTROY_SOCK      4
-#define DEBUG_NET_UDPV6_DESTROY_SOCK    5
-#define DEBUG_NET_INET_SOCK_SET_STATE   6
-#define DEBUG_NET_TCP_CONNECT           7
+#define NET_PACKET                      4000
+#define DEBUG_NET_SECURITY_BIND         4001
+#define DEBUG_NET_UDP_SENDMSG           4002
+#define DEBUG_NET_UDP_DISCONNECT        4003
+#define DEBUG_NET_UDP_DESTROY_SOCK      4004
+#define DEBUG_NET_UDPV6_DESTROY_SOCK    4005
+#define DEBUG_NET_INET_SOCK_SET_STATE   4006
+#define DEBUG_NET_TCP_CONNECT           4007
 
 #define CONFIG_SHOW_SYSCALL             1
 #define CONFIG_EXEC_ENV                 2
@@ -4159,6 +4159,7 @@ static __always_inline int tc_probe(struct __sk_buff *skb, bool ingress) {
     net_packet_t pkt = {0};
     pkt.ts = bpf_ktime_get_ns();
     pkt.len = skb->len;
+    pkt.event_id = NET_PACKET;
     pkt.ifindex = skb->ifindex;
     local_net_id_t connect_id = {0};
 
