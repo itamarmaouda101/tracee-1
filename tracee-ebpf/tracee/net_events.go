@@ -27,11 +27,6 @@ type NetPacketData struct {
 	pktLen    uint32  `json:"pkt_len"`
 	metaData  PktMeta `json:"meta_data"`
 }
-type DnsQueryData struct {
-	query      string `json:"query"`
-	queryType  string `json:"queryType"`
-	queryClass string `json:"queryclass"`
-}
 
 func (t Tracee) parsePacketMetaData(payload *bytes.Buffer) (PktMeta, error, uint32, int) {
 	var pktMetaData PktMeta
