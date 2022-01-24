@@ -2,6 +2,7 @@ package tracee
 
 import (
 	"github.com/aquasecurity/tracee/pkg/external"
+	"github.com/aquasecurity/tracee/tracee-ebpf/tracee/network_protocols"
 )
 
 // ProbeType is an enum that describes the mechanism used to attach the event
@@ -42,7 +43,7 @@ type EventDefinition struct {
 // Common events (used by all architectures)
 // events should match defined values in ebpf code
 const (
-	SysEnterEventID int32 = iota + 1000
+	SysEnterEventID int32 = iota + network_protocols.MaxNetEventID
 	SysExitEventID
 	SchedProcessForkEventID
 	SchedProcessExecEventID
@@ -84,18 +85,6 @@ const (
 	ContainerCreateEventID
 	ContainerRemoveEventID
 	MaxUserSpaceEventID
-)
-
-// Network events that came from the tc_probe
-const (
-	NetPacket int32 = iota + 4000
-	DebugNetSecurityBind
-	DebugNetUdpSendmsg
-	DebugNetUdpDisconnect
-	DebugNetUdpDestroySock
-	DebugNetUdpV6DestroySock
-	DebugNetInetSockSetState
-	DebugNetTcpConnect
 )
 
 const Unique32BitSyscallsStartID = 3000
@@ -6151,6 +6140,78 @@ var EventsDefinitions = map[int32]EventDefinition{
 		Params: []external.ArgMeta{
 			{Type: "const char*", Name: "runtime"},
 			{Type: "const char*", Name: "container_id"},
+		},
+	},
+	network_protocols.NetPacket: {
+		ID32Bit: sys32undefined,
+		Name:    "NetPacket",
+		Probes:  []probe{},
+		Sets:    []string{},
+		Params: []external.ArgMeta{
+			{Type: "external.PktMeta", Name: "PacketMetaData"},
+		},
+	},
+	network_protocols.NetSecurityBind: {
+		ID32Bit: sys32undefined,
+		Name:    "NetSecurityBind",
+		Probes:  []probe{},
+		Sets:    []string{},
+		Params: []external.ArgMeta{
+			{Type: "external.FunctionBasedPacket", Name: "PacketMetaData"},
+		},
+	},
+	network_protocols.NetUdpSendmsg: {
+		ID32Bit: sys32undefined,
+		Name:    "NetUdpSendmsg",
+		Probes:  []probe{},
+		Sets:    []string{},
+		Params: []external.ArgMeta{
+			{Type: "external.FunctionBasedPacket", Name: "PacketMetaData"},
+		},
+	},
+	network_protocols.NetUdpDisconnect: {
+		ID32Bit: sys32undefined,
+		Name:    "NetUdpDisconnect",
+		Probes:  []probe{},
+		Sets:    []string{},
+		Params: []external.ArgMeta{
+			{Type: "external.FunctionBasedPacket", Name: "PacketMetaData"},
+		},
+	},
+	network_protocols.NetUdpDestroySock: {
+		ID32Bit: sys32undefined,
+		Name:    "NetUdpDestroySock",
+		Probes:  []probe{},
+		Sets:    []string{},
+		Params: []external.ArgMeta{
+			{Type: "external.FunctionBasedPacket", Name: "PacketMetaData"},
+		},
+	},
+	network_protocols.NetUdpV6DestroySock: {
+		ID32Bit: sys32undefined,
+		Name:    "NetUdpV6DestroySock",
+		Probes:  []probe{},
+		Sets:    []string{},
+		Params: []external.ArgMeta{
+			{Type: "external.FunctionBasedPacket", Name: "PacketMetaData"},
+		},
+	},
+	network_protocols.NetInetSockSetState: {
+		ID32Bit: sys32undefined,
+		Name:    "NetInetSockSetState",
+		Probes:  []probe{},
+		Sets:    []string{},
+		Params: []external.ArgMeta{
+			{Type: "external.FunctionBasedPacket", Name: "PacketMetaData"},
+		},
+	},
+	network_protocols.NetTcpConnect: {
+		ID32Bit: sys32undefined,
+		Name:    "NetTcpConnect",
+		Probes:  []probe{},
+		Sets:    []string{},
+		Params: []external.ArgMeta{
+			{Type: "external.FunctionBasedPacket", Name: "PacketMetaData"},
 		},
 	},
 }
