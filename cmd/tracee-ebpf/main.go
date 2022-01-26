@@ -51,10 +51,25 @@ func main() {
 				return nil
 			}
 
+			// OS release information
+
+			OSInfo, err := helpers.GetOSInfo()
+			if err != nil {
+				if debug {
+					fmt.Fprintf(os.Stderr, "OSInfo: warning: os-release file could not be found\n(%v)\n", err) // only to be enforced when BTF needs to be downloaded, later on
+					fmt.Fprintf(os.Stdout, "OSInfo: %v: %v\n", helpers.OS_KERNEL_RELEASE, OSInfo.GetOSReleaseFieldValue(helpers.OS_KERNEL_RELEASE))
+				}
+			} else if debug {
+				for k, v := range OSInfo.GetOSReleaseAllFieldValues() {
+					fmt.Fprintf(os.Stdout, "OSInfo: %v: %v\n", k, v)
+				}
+			}
+
 			cfg := tracee.Config{
 				PerfBufferSize:     c.Int("perf-buffer-size"),
 				BlobPerfBufferSize: c.Int("blob-perf-buffer-size"),
 				Debug:              c.Bool("debug"),
+				OsConfig:           OSInfo,
 			}
 
 			if checkCommandIsHelp(c.StringSlice("capture")) {
@@ -133,20 +148,6 @@ func main() {
 				if debug {
 					fmt.Fprintf(os.Stderr, "KConfig: warning: could not check enabled kconfig features\n(%v)\n", err)
 					fmt.Fprintf(os.Stderr, "KConfig: warning: assuming kconfig values, might have unexpected behavior\n")
-				}
-			}
-
-			// OS release information
-
-			OSInfo, err := helpers.GetOSInfo()
-			if err != nil {
-				if debug {
-					fmt.Fprintf(os.Stderr, "OSInfo: warning: os-release file could not be found\n(%v)\n", err) // only to be enforced when BTF needs to be downloaded, later on
-					fmt.Fprintf(os.Stdout, "OSInfo: %v: %v\n", helpers.OS_KERNEL_RELEASE, OSInfo.GetOSReleaseFieldValue(helpers.OS_KERNEL_RELEASE))
-				}
-			} else if debug {
-				for k, v := range OSInfo.GetOSReleaseAllFieldValues() {
-					fmt.Fprintf(os.Stdout, "OSInfo: %v: %v\n", k, v)
 				}
 			}
 

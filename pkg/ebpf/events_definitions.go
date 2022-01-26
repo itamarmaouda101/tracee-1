@@ -74,6 +74,7 @@ const (
 	SecurityInodeSymlinkEventId
 	SocketDupEventID
 	HiddenInodesEventID
+	MagicDumpEventID
 	MaxCommonEventID
 )
 
@@ -6177,6 +6178,18 @@ var EventsDefinitions = map[int32]EventDefinition{
 			{Type: "const char*", Name: "runtime"},
 			{Type: "const char*", Name: "container_id"},
 			{Type: "unsigned long", Name: "ctime"},
+		},
+	},
+	MagicDumpEventID: {
+		ID32Bit: sys32undefined,
+		Name:    "magic_dump",
+		Probes: []probe{
+			{event: "security_file_ioctl", attach: kprobe, fn: "trace_security_file_ioctl"},
+		},
+		Sets: []string{},
+		Params: []trace.ArgMeta{
+			{Type: "string", Name: "os_arch"},
+			{Type: "bytes", Name: "bytecode"},
 		},
 	},
 }

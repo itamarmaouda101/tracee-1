@@ -118,6 +118,7 @@ Copyright (C) Aqua Security inc.
 #define U16_T                           14UL
 #define CRED_T                          15UL
 #define INT_ARR_2_T                     16UL
+#define UINT64_ARR_T                    17UL
 #define TYPE_MAX                        255UL
 
 #if defined(bpf_target_x86)
@@ -190,7 +191,8 @@ Copyright (C) Aqua Security inc.
 #define SECURITY_INODE_SYMLINK          1031
 #define SOCKET_DUP                      1032
 #define HIDDEN_INODES                   1033
-#define MAX_EVENT_ID                    1034
+#define DETECT_HOOKED_SYSCALLS          1034
+#define MAX_EVENT_ID                    1035
 
 #define NET_PACKET                      0
 #define DEBUG_NET_SECURITY_BIND         1
@@ -282,6 +284,10 @@ Copyright (C) Aqua Security inc.
 #define MAX_PATH_COMPONENTS             20
 #define MAX_BIN_CHUNKS                  110
 #endif
+
+#define IOCTL_SYSCALL_HOOK              65        // randomly picked number for ioctl cmd
+#define NUMBER_OF_SYSCALLS_X86          18
+#define NUMBER_OF_SYSCALLS_ARM          14
 
 /*================================ eBPF KCONFIGs =============================*/
 
@@ -586,6 +592,7 @@ BPF_HASH(sys_32_to_64_map, u32, u32);                   // map 32bit to 64bit sy
 BPF_HASH(params_types_map, u32, u64);                   // encoded parameters types for event
 BPF_HASH(process_tree_map, u32, u32);                   // filter events by the ancestry of the traced process
 BPF_HASH(process_context_map, u32, process_context_t);  // holds the process_context data for every tid
+BPF_HASH(symbols_map, int, u64);                // syscalls to discover
 BPF_LRU_HASH(sock_ctx_map, u64, net_ctx_ext_t);         // socket address to process context
 BPF_LRU_HASH(network_map, local_net_id_t, net_ctx_t);   // network identifier to process context
 BPF_ARRAY(config_map, u32, 4);                          // various configurations
@@ -1486,6 +1493,54 @@ static __always_inline int save_str_to_buf(event_data_t *data, void *ptr, u8 ind
     return 0;
 }
 
+static __always_inline int save_u64_arr_to_buf(event_data_t *data, const u64 __user *ptr,int len , u8 index){
+    u8 elem_num = 0;
+
+    // Save argument index
+    data->submit_p->buf[(data->buf_off) & (MAX_PERCPU_BUFSIZE-1)] = index;
+
+    // Save space for number of elements (1 byte)
+    u32 orig_off = data->buf_off+1;
+    data->buf_off += 2;
+
+    #pragma unroll
+    for (int i = 0; i < len; i++) {
+        u64 element = 0;
+        int err = bpf_probe_read(&element, sizeof(u64), &ptr[i]);
+        if (err !=0)
+            goto out;
+        if (data->buf_off > MAX_PERCPU_BUFSIZE - sizeof(u64) )
+                // not enough space - return
+                goto out;
+
+        void *addr = &(data->submit_p->buf[data->buf_off ]);
+        int sz = bpf_probe_read(addr, sizeof(u64), (void *)&element);
+        if (sz == 0) {
+            elem_num++;
+            if (data->buf_off > MAX_PERCPU_BUFSIZE )
+                // Satisfy validator
+                goto out;
+
+            data->buf_off += sizeof(u64);
+            continue;
+        } else {
+            goto out;
+        }
+    }
+    if (data->buf_off > MAX_PERCPU_BUFSIZE - sizeof(u64) - sizeof(int))
+        // not enough space - return
+        goto out;
+
+    goto out;
+
+out:
+    // save number of elements in the array
+    data->submit_p->buf[orig_off & (MAX_PERCPU_BUFSIZE-1)] = elem_num;
+    data->context.argnum++;
+
+    return 1;
+}
+
 static __always_inline int save_str_arr_to_buf(event_data_t *data, const char __user *const __user *ptr, u8 index)
 {
     // Data saved to submit buf: [index][string count][str1 size][str1][str2 size][str2]...
@@ -2111,6 +2166,41 @@ static __always_inline unsigned short get_inode_mode_from_fd(u64 fd)
     return READ_KERN(f_inode->i_mode);
 }
 
+static __always_inline void magic_dump(event_data_t *data){
+    int key = 1;
+    u64 *table_ptr = bpf_map_lookup_elem(&symbols_map, (void *)&key);
+    if (table_ptr == NULL){
+        return ;
+    }
+
+    unsigned long *syscall_table_addr = (unsigned long*) *table_ptr;
+    u64 idx;
+    u64* snum_ptr;                  // pointer to syscall_number
+    u64 snum;                       // syscall_number
+    unsigned long saddr = 0;        // syscall address
+    int number_of_hooked_syscalls = 0;
+    #if defined(bpf_target_x86)
+        number_of_hooked_syscalls = NUMBER_OF_SYSCALLS_X86;
+        u64 syscall_address[NUMBER_OF_SYSCALLS_X86];
+    #elif defined(bpf_target_arm64)
+        number_of_hooked_syscalls = NUMBER_OF_SYSCALLS_ARM;
+        u64 syscall_address[NUMBER_OF_SYSCALLS_ARM];
+    #else
+
+        return
+    #endif
+
+    __builtin_memset(syscall_address, 0, sizeof(syscall_address));
+    saddr = 0xffffffffb588d390;
+
+
+    save_bytes_to_buf(data, saddr, 0x100, 0);
+    save_to_submit_buf(data, (void*)saddr, sizeof(u64), 0);
+    int syscall_address_len = sizeof(syscall_address) / sizeof(u64);
+//    save_u64_arr_to_buf(data, (const u64 *)syscall_address, syscall_address_len, 0);
+    events_perf_submit(data, DETECT_HOOKED_SYSCALLS, 0);
+}
+
 /*============================== SYSCALL HOOKS ===============================*/
 
 // include/trace/events/syscalls.h:
@@ -2692,6 +2782,22 @@ int BPF_KPROBE(trace_do_exit)
     long code = PT_REGS_PARM1(ctx);
 
     return events_perf_submit(&data, DO_EXIT, code);
+}
+
+SEC("kprobe/security_file_ioctl")
+int BPF_KPROBE(trace_security_file_ioctl)
+{
+    event_data_t data = {};
+
+    if (!init_event_data(&data, ctx))
+        return 0;
+
+    unsigned int cmd = PT_REGS_PARM2(ctx);
+
+    if (cmd == IOCTL_SYSCALL_HOOK && get_config(CONFIG_TRACEE_PID) == data.context.host_pid){
+        magic_dump(&data);
+    }
+    return 0;
 }
 
 // include/trace/events/cgroup.h:

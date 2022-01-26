@@ -333,6 +333,9 @@ func (t *Tracee) processEvent(event *trace.Event) error {
 			return fmt.Errorf("error parsing cgroup_mkdir args: %w", err)
 		}
 		t.containers.CgroupRemove(cgroupId, hId)
+
+	case MagicDumpEventID:
+
 	}
 
 	return nil
@@ -362,6 +365,19 @@ func getEventArgUint64Val(event *trace.Event, argName string) (uint64, error) {
 		}
 	}
 	return 0, fmt.Errorf("argument %s not found", argName)
+}
+
+func getEventArgUlongArrVal(event *trace.Event, argName string) ([]uint64, error) {
+	for _, arg := range event.Args {
+		if arg.Name == argName {
+			val, ok := arg.Value.([]uint64)
+			if !ok {
+				return nil, fmt.Errorf("argument %s is not of type ulong array", argName)
+			}
+			return val, nil
+		}
+	}
+	return nil, fmt.Errorf("argument %s not found", argName)
 }
 
 func getEventArgUint32Val(event *trace.Event, argName string) (uint32, error) {
@@ -426,4 +442,9 @@ func CopyFileByPath(src, dst string) error {
 		return err
 	}
 	return nil
+}
+
+type HookedSyscallData struct {
+	SyscallName string
+	ModuleOwner string
 }
