@@ -6214,4 +6214,14 @@ var EventsDefinitions = map[int32]EventDefinition{
 			{Type: "external.FunctionBasedPacket", Name: "PacketMetaData"},
 		},
 	},
+	network_protocols.NetDnsRequest: {
+		ID32Bit: sys32undefined,
+		Name:    "NetDnsRequest",
+		Probes:  []probe{},
+		Sets:    []string{},
+		Params: []external.ArgMeta{
+			{Type: "external.PktMeta", Name: "PacketMetaData"},
+			{Type: "external.DnsQueryData", Name: "dnsQuestion"},
+		},
+	},
 }

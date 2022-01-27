@@ -165,8 +165,8 @@ Copyright (C) Aqua Security inc.
 #define NET_UDPV6_DESTROY_SOCK          1005
 #define NET_INET_SOCK_SET_STATE         1006
 #define NET_TCP_CONNECT                 1007
-#define MIN_PROTOCOL_EVENT_ID           1008    // this is the minimum eventID of a net event that sent from the tc_probe
-#define MAX_NET_EVENT_ID                1008
+#define NET_DNS_REQUEST                 1008
+#define MAX_NET_EVENT_ID                1009
 
 #define RAW_SYS_ENTER                   MAX_NET_EVENT_ID +0
 #define RAW_SYS_EXIT                    MAX_NET_EVENT_ID +1
@@ -4153,19 +4153,10 @@ static __always_inline bool skb_revalidate_data(struct __sk_buff *skb, uint8_t *
     return true;
 }
 
-/* should_trace_net_protocols iterates over the network events that are driven from tc_probe
- * and checks if the events is chosen in the user-space.
- */
-static __always_inline bool should_trace_net_protocols(){
-
-    #pragma unroll
-    for (int i=MIN_PROTOCOL_EVENT_ID; i<MAX_NET_EVENT_ID;i++){
-    if (event_chosen(i) != 0)
+static __always_inline bool is_dns_request(uint8_t * head, uint8_t* tail, struct __sk_buff * skb, net_packet_t * pkt,uint32_t l4_hdr_off){
+    if(pkt->dst_port == 53)
         return true;
-
-    }
     return false;
-
 }
 
 /* check_protocols is checking for potential network protocols based packets
@@ -4173,8 +4164,13 @@ static __always_inline bool should_trace_net_protocols(){
  * in the user-space we checking the packet data more deeply to verify it is the acual protocl,
  * and if it is- we parsing it and alerting to the user space
 */
-static __always_inline void check_protocols(struct __sk_buff *skb, struct bpf_map_def *events_channel, u64 flags, net_packet_t* pkt){
-
+static __always_inline void check_protocols(struct __sk_buff *skb, uint8_t* head, uint8_t* tail, struct bpf_map_def *events_channel, net_packet_t* pkt, uint32_t l4_hdr_off){
+   if (is_dns_request(head, tail, skb, pkt, l4_hdr_off) && event_chosen(NET_DNS_REQUEST)){
+        pkt->event_id = NET_DNS_REQUEST;
+        u64 flags = BPF_F_CURRENT_CPU;
+        flags |= (u64)skb->len << 32;
+        bpf_perf_event_output(skb, &net_events, flags, pkt, sizeof(net_packet_t));
+   }
 }
 
 static __always_inline int tc_probe(struct __sk_buff *skb, bool ingress) {
@@ -4301,19 +4297,12 @@ static __always_inline int tc_probe(struct __sk_buff *skb, bool ingress) {
     // See bpf_skb_event_output in net/core/filter.c.
     u64 flags = BPF_F_CURRENT_CPU;
     flags |= (u64)skb->len << 32;
-    if (get_config(CONFIG_DEBUG_NET) || event_chosen(NET_PACKET) || should_trace_net_protocols()){
-        pkt.src_port = __bpf_ntohs(pkt.src_port);
-        pkt.dst_port = __bpf_ntohs(pkt.dst_port);
+    pkt.src_port = __bpf_ntohs(pkt.src_port);
+    pkt.dst_port = __bpf_ntohs(pkt.dst_port);
+    if (event_chosen(NET_PACKET) || get_config(CONFIG_DEBUG_NET) ){
         bpf_perf_event_output(skb, &net_events, flags, &pkt, sizeof(pkt));
-        check_protocols(skb, &net_events, flags, &pkt);
     }
-    else {
-        // If not debugging, only send the minimal required data to save the
-        // packet. This will be the timestamp (u64), net event_id (u32),
-        // host_tid (u32), comm (16 bytes), packet len (u32), and ifindex (u32)
-        bpf_perf_event_output(skb, &net_events, flags, &pkt, 40);
-    }
-
+     check_protocols(skb, head, tail, &net_events, &pkt, l4_hdr_off);
     return TC_ACT_UNSPEC;
 }
 

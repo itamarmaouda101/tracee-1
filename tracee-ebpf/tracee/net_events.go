@@ -21,8 +21,8 @@ func (t *Tracee) processNetEvents() {
 			}
 			evtMeta, dataBuff := parseEventMetaData(in)
 
-			processContext, exist := t.processTree.ProcessTreeMap[evtMeta.HostTid]
-			if !exist {
+			processContext, exist := t.getProcessCtx(evtMeta.HostTid)
+			if exist != nil {
 				t.handleError(fmt.Errorf("couldn't find the process: %d", evtMeta.HostTid))
 				continue
 			}
