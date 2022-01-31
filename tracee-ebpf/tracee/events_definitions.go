@@ -43,7 +43,7 @@ type EventDefinition struct {
 // Common events (used by all architectures)
 // events should match defined values in ebpf code
 const (
-	SysEnterEventID int32 = iota + network_protocols.MaxNetEventID
+	SysEnterEventID int32 = iota + 1000
 	SysExitEventID
 	SchedProcessForkEventID
 	SchedProcessExecEventID
@@ -6144,81 +6144,81 @@ var EventsDefinitions = map[int32]EventDefinition{
 	},
 	network_protocols.NetPacket: {
 		ID32Bit: sys32undefined,
-		Name:    "NetPacket",
+		Name:    "net_packet",
 		Probes:  []probe{},
-		Sets:    []string{},
+		Sets:    []string{"net_debug"},
 		Params: []external.ArgMeta{
 			{Type: "external.PktMeta", Name: "PacketMetaData"},
 		},
 	},
 	network_protocols.NetSecurityBind: {
 		ID32Bit: sys32undefined,
-		Name:    "NetSecurityBind",
+		Name:    "set_security_bind",
 		Probes:  []probe{},
-		Sets:    []string{},
+		Sets:    []string{"net_debug"},
 		Params: []external.ArgMeta{
 			{Type: "external.FunctionBasedPacket", Name: "PacketMetaData"},
 		},
 	},
 	network_protocols.NetUdpSendmsg: {
 		ID32Bit: sys32undefined,
-		Name:    "NetUdpSendmsg",
+		Name:    "net_udp_send_msg",
 		Probes:  []probe{},
-		Sets:    []string{},
+		Sets:    []string{"net_debug"},
 		Params: []external.ArgMeta{
 			{Type: "external.FunctionBasedPacket", Name: "PacketMetaData"},
 		},
 	},
 	network_protocols.NetUdpDisconnect: {
 		ID32Bit: sys32undefined,
-		Name:    "NetUdpDisconnect",
+		Name:    "net_udp_disconnect",
 		Probes:  []probe{},
-		Sets:    []string{},
+		Sets:    []string{"net_debug"},
 		Params: []external.ArgMeta{
 			{Type: "external.FunctionBasedPacket", Name: "PacketMetaData"},
 		},
 	},
 	network_protocols.NetUdpDestroySock: {
 		ID32Bit: sys32undefined,
-		Name:    "NetUdpDestroySock",
+		Name:    "net_udp_destroy_sock",
 		Probes:  []probe{},
-		Sets:    []string{},
+		Sets:    []string{"net_debug"},
 		Params: []external.ArgMeta{
 			{Type: "external.FunctionBasedPacket", Name: "PacketMetaData"},
 		},
 	},
 	network_protocols.NetUdpV6DestroySock: {
 		ID32Bit: sys32undefined,
-		Name:    "NetUdpV6DestroySock",
+		Name:    "net_udp_v6_destroy_sock",
 		Probes:  []probe{},
-		Sets:    []string{},
+		Sets:    []string{"net_debug"},
 		Params: []external.ArgMeta{
 			{Type: "external.FunctionBasedPacket", Name: "PacketMetaData"},
 		},
 	},
 	network_protocols.NetInetSockSetState: {
 		ID32Bit: sys32undefined,
-		Name:    "NetInetSockSetState",
+		Name:    "net_inet_sock_set_state",
 		Probes:  []probe{},
-		Sets:    []string{},
+		Sets:    []string{"net_debug"},
 		Params: []external.ArgMeta{
 			{Type: "external.FunctionBasedPacket", Name: "PacketMetaData"},
 		},
 	},
 	network_protocols.NetTcpConnect: {
 		ID32Bit: sys32undefined,
-		Name:    "NetTcpConnect",
+		Name:    "net_tcp_connect",
 		Probes:  []probe{},
-		Sets:    []string{},
+		Sets:    []string{"net_debug"},
 		Params: []external.ArgMeta{
 			{Type: "external.FunctionBasedPacket", Name: "PacketMetaData"},
 		},
 	},
 	network_protocols.NetDnsRequest: {
 		ID32Bit: sys32undefined,
-		Name:    "NetDnsRequest",
+		Name:    "net_dns_request",
 		Probes:  []probe{},
-		Sets:    []string{},
+		Sets:    []string{"net_debug"},
 		Params: []external.ArgMeta{
 			{Type: "external.PktMeta", Name: "PacketMetaData"},
 			{Type: "external.DnsQueryData", Name: "dnsQuestion"},

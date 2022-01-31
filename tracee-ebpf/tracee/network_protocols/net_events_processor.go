@@ -3,11 +3,11 @@ package network_protocols
 import (
 	"bytes"
 	"github.com/aquasecurity/tracee/pkg/external"
-	"github.com/aquasecurity/tracee/pkg/processContext"
+	"github.com/aquasecurity/tracee/tracee-ebpf/tracee/processContext"
 )
 
 const (
-	NetPacket int32 = iota + 1000
+	NetPacket int32 = iota + 4000
 	NetSecurityBind
 	NetUdpSendmsg
 	NetUdpDisconnect
@@ -20,33 +20,33 @@ const (
 )
 
 type EventMeta struct {
-	TimeStamp   uint64 `json:"time_stamp"`
-	NetEventId  int32  `json:"net_event_id"`
-	HostTid     int    `json:"host_tid"`
-	ProcessName string `json:"process_name"`
+	TimeStamp   uint64 `json:"timeStamp"`
+	NetEventId  int32  `json:"netEventId"`
+	HostTid     int    `json:"hostTid"`
+	ProcessName string `json:"processName"`
 }
 type CaptueData struct {
 	PacketLen      uint32
 	InterfaceIndex uint32
 }
 
-func ProcessNetEvent(buffer *bytes.Buffer, evtMeta EventMeta, eventName string, ctx processContext.ProcessCtx) (external.Event, bool, CaptueData) {
+func ProcessNetEvent(buffer *bytes.Buffer, evtMeta EventMeta, eventName string, ctx processContext.ProcessCtx, bootTime uint64) (external.Event, bool, CaptueData) {
 	var evt external.Event
 	var captureData CaptueData
-	evt.EventName = eventName
 	switch evtMeta.NetEventId {
 	case NetPacket:
 		var packet PacketMeta
-		evt, packet = netPacketProtocolHandler(buffer, evtMeta, ctx)
+		evt, packet = netPacketProtocolHandler(buffer, evtMeta, ctx, eventName, bootTime)
 		captureData.PacketLen = packet.PktLen
 		captureData.InterfaceIndex = packet.IfIndex
 		return evt, true, captureData
 	case NetDnsRequest:
-		evt, _ = dnsRequestPrototcolsHandler(buffer, evtMeta, ctx)
-		return evt, false, captureData
+		evt, _ = dnsRequestPrototcolsHandler(buffer, evtMeta, ctx, eventName, bootTime)
+
+		return evt, true, captureData
 	}
 	if evtMeta.NetEventId > NetPacket && evtMeta.NetEventId <= NetTcpConnect {
-		return FunctionBasedNetEventHandler(buffer, evtMeta, ctx), false, captureData
+		return FunctionBasedNetEventHandler(buffer, evtMeta, ctx, eventName, bootTime), false, captureData
 	}
 	return evt, false, captureData
 }

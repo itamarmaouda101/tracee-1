@@ -247,31 +247,3 @@ func (alert MemProtAlert) String() string {
 		return "Unknown alert"
 	}
 }
-
-//for supporting networking events in tracee rules
-type PktMeta struct {
-	SrcIP    string `json:"src_ip"`
-	DestIP   string `json:"dest_ip"`
-	SrcPort  uint16 `json:"src_port"`
-	DestPort uint16 `json:"dest_port"`
-	Protocol uint8  `json:"protocol"`
-}
-
-type FunctionBasedPacket struct {
-	LocalIP     string
-	RemoteIP    string
-	LocalPort   uint16
-	RemotePort  uint16
-	Protocol    uint8
-	_           [3]byte //padding
-	TcpOldState uint32
-	TcpNewState uint32
-	_           [4]byte //padding
-	SockPtr     uint64
-}
-
-type DnsQueryData struct {
-	Query      string `json:"Query"`
-	QueryType  string `json:"QueryType"`
-	QueryClass string `json:"queryclass"`
-}

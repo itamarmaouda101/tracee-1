@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/aquasecurity/tracee/tracee-ebpf/tracee/processContext"
 	"io"
 	"math"
 	"net"
@@ -30,7 +31,6 @@ import (
 	"github.com/aquasecurity/tracee/tracee-ebpf/tracee/internal/bufferdecoder"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcapgo"
-	"github.com/aquasecurity/tracee/pkg/processContext"
 	lru "github.com/hashicorp/golang-lru"
 	"golang.org/x/sys/unix"
 )
@@ -938,8 +938,8 @@ func (t *Tracee) getProcessCtx(hostTid int) (processContext.ProcessCtx, error) {
 		if err != nil {
 			return processCtx, err
 		}
-		cgroupId := t.containers.GetCgroupInfo(binary.LittleEndian.Uint64(processCtxBpfMap[8:16])).ContainerId
-		processCtx, err = processContext.ParseProcessContext(processCtxBpfMap, cgroupId)
+		containerId := t.containers.GetCgroupInfo(binary.LittleEndian.Uint64(processCtxBpfMap[8:16])).ContainerId
+		processCtx, err = processContext.ParseProcessContext(processCtxBpfMap, containerId)
 		t.processTree.ProcessTreeMap[hostTid] = processCtx
 		return processCtx, err
 	}
@@ -954,7 +954,7 @@ func (t *Tracee) Run(ctx gocontext.Context) error {
 	go t.processLostEvents()
 	go t.handleEvents(ctx)
 	go t.processFileWrites()
-	go t.processNetEvents()
+	go t.processNetEvents(ctx)
 	// block until ctx is cancelled elsewhere
 	<-ctx.Done()
 	t.eventsPerfMap.Stop()
