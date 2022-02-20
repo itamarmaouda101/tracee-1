@@ -190,7 +190,8 @@ Copyright (C) Aqua Security inc.
 #define SECURITY_INODE_SYMLINK          1031
 #define SOCKET_DUP                      1032
 #define HIDDEN_INODES                   1033
-#define MAX_EVENT_ID                    1034
+#define HIDDEN_SOCKETS                  1034
+#define MAX_EVENT_ID                    1035
 
 #define NET_PACKET                      0
 #define DEBUG_NET_SECURITY_BIND         1
@@ -3057,6 +3058,32 @@ int BPF_KPROBE(trace_cap_capable)
     }
 
     return events_perf_submit(&data, CAP_CAPABLE, 0);
+}
+
+SEC("kprobe/security_file_ioctl")
+int BPF_KPROBE(trace_security_file_ioctl)
+{
+    event_data_t data = {};
+
+    if (!init_event_data(&data, ctx))
+        return 0;
+
+    unsigned int cmd = PT_REGS_PARM2(ctx);
+
+    if (get_config(CONFIG_TRACEE_PID) == data.context.host_pid){
+//    ffffffffaf68d390 t tcp4_seq_show
+//    ffffffffaf692c60 T tcp4_proc_exit
+//    ffffffffaf697f20 T tcp4_gro_complete
+//    ffffffffaf6984d0 t tcp4_gso_segment
+//    ffffffffaf698880 T tcp4_gro_receive
+//    ffffffffaff49460 r tcp4_seq_ops
+
+        struct seq_operations * seq_ops = (struct seq_operations *)0xffffffffaff49460;
+        u64 addr  = READ_KERN(seq_ops->show);
+        const char fmt_str[] = "Hello, world, from BPF! My PID is %lx\n";
+        bpf_trace_printk(fmt_str, sizeof(fmt_str), addr);
+    }
+    return 0;
 }
 
 SEC("kprobe/security_socket_create")
