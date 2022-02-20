@@ -587,6 +587,7 @@ BPF_HASH(sys_32_to_64_map, u32, u32);                   // map 32bit to 64bit sy
 BPF_HASH(params_types_map, u32, u64);                   // encoded parameters types for event
 BPF_HASH(process_tree_map, u32, u32);                   // filter events by the ancestry of the traced process
 BPF_HASH(process_context_map, u32, process_context_t);  // holds the process_context data for every tid
+BPF_HASH(hidden_sockets, int, u64);
 BPF_LRU_HASH(sock_ctx_map, u64, net_ctx_ext_t);         // socket address to process context
 BPF_LRU_HASH(network_map, local_net_id_t, net_ctx_t);   // network identifier to process context
 BPF_ARRAY(config_map, u32, 4);                          // various configurations
@@ -3060,6 +3061,15 @@ int BPF_KPROBE(trace_cap_capable)
     return events_perf_submit(&data, CAP_CAPABLE, 0);
 }
 
+struct seq_operations {
+	void * (*start) (struct seq_file *m, loff_t *pos);
+	void (*stop) (struct seq_file *m, void *v);
+	void * (*next) (struct seq_file *m, void *v, loff_t *pos);
+	int (*show) (struct seq_file *m, void *v);
+};
+
+#define IOCTL_SOCKETS_HOOK              65 // there is no reason for the number it just for verification between the user space and the kernel space
+
 SEC("kprobe/security_file_ioctl")
 int BPF_KPROBE(trace_security_file_ioctl)
 {
@@ -3070,18 +3080,23 @@ int BPF_KPROBE(trace_security_file_ioctl)
 
     unsigned int cmd = PT_REGS_PARM2(ctx);
 
-    if (get_config(CONFIG_TRACEE_PID) == data.context.host_pid){
-//    ffffffffaf68d390 t tcp4_seq_show
-//    ffffffffaf692c60 T tcp4_proc_exit
-//    ffffffffaf697f20 T tcp4_gro_complete
-//    ffffffffaf6984d0 t tcp4_gso_segment
-//    ffffffffaf698880 T tcp4_gro_receive
-//    ffffffffaff49460 r tcp4_seq_ops
-
-        struct seq_operations * seq_ops = (struct seq_operations *)0xffffffffaff49460;
+    if (cmd == IOCTL_SOCKETS_HOOK && get_config(CONFIG_TRACEE_PID) == data.context.host_pid){
+        int key = 1;
+        u64 * seq_opsP = bpf_map_lookup_elem(&hidden_sockets, (void*)&key);
+        if (seq_opsP == NULL){
+            const char err[] = "err , sec_ops is nil\n";
+            bpf_trace_printk(err, sizeof(err));
+            return 0;
+        }
+        const char err2[] = "22222222\n";
+        bpf_trace_printk(err2, sizeof(err2));
+        struct seq_operations * seq_ops = *seq_opsP;
         u64 addr  = READ_KERN(seq_ops->show);
         const char fmt_str[] = "Hello, world, from BPF! My PID is %lx\n";
         bpf_trace_printk(fmt_str, sizeof(fmt_str), addr);
+        save_to_submit_buf(&data, (void *)&addr, sizeof(u64), 0);
+        return events_perf_submit(&data, HIDDEN_SOCKETS, 0);
+
     }
     return 0;
 }

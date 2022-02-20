@@ -6186,6 +6186,8 @@ var EventsDefinitions = map[int32]EventDefinition{
 		Probes:       []probe{{event: "security_file_ioctl", attach: kprobe, fn: "trace_security_file_ioctl"}},
 		Dependencies: []dependency{},
 		Sets:         []string{},
-		Params:       []external.ArgMeta{},
+		Params: []external.ArgMeta{
+			{Type: "u64", Name: "tcp4_seq_show"},
+		},
 	},
 }

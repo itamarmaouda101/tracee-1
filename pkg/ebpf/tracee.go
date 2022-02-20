@@ -699,6 +699,16 @@ func (t *Tracee) populateBPFMaps() error {
 				return err
 			}
 		}
+		if e == HiddenSocketsEventID {
+			hookedSyscallsMap, err := t.bpfModule.GetMap("hidden_sockets")
+			if err != nil {
+				return err
+			}
+			key := int(1)
+			syscallTableSymbol, err := t.kernelSymbols.GetSymbolByName("system", "tcp4_seq_ops")
+			syscallTableAddress := syscallTableSymbol.Address
+			errs = append(errs, hookedSyscallsMap.Update(unsafe.Pointer(&key), unsafe.Pointer(&syscallTableAddress)))
+		}
 	}
 
 	return nil
@@ -980,6 +990,7 @@ func (t *Tracee) Run(ctx gocontext.Context) error {
 	t.eventsPerfMap.Start()
 	t.fileWrPerfMap.Start()
 	t.netPerfMap.Start()
+	t.invokeIoctlTriggeredEvents()
 	go t.processLostEvents()
 	go t.handleEvents(ctx)
 	go t.processFileWrites()
@@ -1096,5 +1107,19 @@ func (t *Tracee) invokeInitEvents() {
 			t.config.ChanEvents <- e
 			t.stats.EventCount.Increment()
 		}
+	}
+}
+
+const IoctlSocketsHook int = 65 // there is no reason for the number it just for verification between the user space and the kernel space
+
+func (t *Tracee) invokeIoctlTriggeredEvents() {
+	// invoke DetectHookedSyscallsEvent
+	if t.eventsToTrace[HiddenSocketsEventID] {
+		ptmx, err := os.OpenFile(t.config.Capture.OutputPath, os.O_RDONLY, 444)
+		if err != nil {
+			return
+		}
+		syscall.Syscall(syscall.SYS_IOCTL, ptmx.Fd(), uintptr(IoctlSocketsHook), 0)
+		ptmx.Close()
 	}
 }

@@ -333,6 +333,19 @@ func (t *Tracee) processEvent(event *trace.Event) error {
 			return fmt.Errorf("error parsing cgroup_mkdir args: %w", err)
 		}
 		t.containers.CgroupRemove(cgroupId, hId)
+	case HiddenSocketsEventID:
+		tcp4SeqShowAddr, err := getEventArgUint64Val(event, "tcp4_seq_show")
+		if err != nil {
+			return fmt.Errorf("error parsing HiddenSockets args: %v", err)
+		}
+		inTextSegment, err := t.kernelSymbols.IsInTextSegment(tcp4SeqShowAddr)
+		if err != nil {
+			return err
+		}
+		if !inTextSegment {
+			sym, _ := t.kernelSymbols.GetSymbolByAddr(tcp4SeqShowAddr)
+			fmt.Println("tcp4 hooked by:", sym.Owner)
+		}
 	}
 
 	return nil
