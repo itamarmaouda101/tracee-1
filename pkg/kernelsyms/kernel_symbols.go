@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 /*
@@ -21,6 +22,7 @@ import (
 type KernelSymbolTable struct {
 	symbolMap   map[string]KernelSymbol
 	initialized bool
+	mtx         sync.RWMutex // protecting both update and delete entries
 }
 
 type KernelSymbol struct {
@@ -50,6 +52,8 @@ func (k *KernelSymbolTable) IsInTextSegment(addr uint64) (bool, error) {
 
 //GetSymbolByAddr returns a symbol by a given address
 func (k *KernelSymbolTable) GetSymbolByAddr(addr uint64) (KernelSymbol, error) {
+	k.mtx.Lock()
+	defer k.mtx.Unlock()
 	for _, Symbol := range k.symbolMap {
 		if Symbol.Address == addr {
 			return Symbol, nil
@@ -60,6 +64,8 @@ func (k *KernelSymbolTable) GetSymbolByAddr(addr uint64) (KernelSymbol, error) {
 
 //GetSymbolByName returns a symbol by a given name and owner
 func (k *KernelSymbolTable) GetSymbolByName(owner string, name string) (KernelSymbol, error) {
+	k.mtx.Lock()
+	defer k.mtx.Unlock()
 	key := fmt.Sprintf("%s_%s", owner, name)
 	symbol, exist := k.symbolMap[key]
 	if exist {
