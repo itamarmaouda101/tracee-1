@@ -189,7 +189,8 @@ Copyright (C) Aqua Security inc.
 #define SECURITY_POST_READ_FILE         1030
 #define SOCKET_DUP                      1031
 #define HIDDEN_INODES                   1032
-#define MAX_EVENT_ID                    1033
+#define TCP4_SEQ_SHOW                   1033
+#define MAX_EVENT_ID                    1034
 
 #define NET_PACKET                      0
 #define DEBUG_NET_SECURITY_BIND         1
@@ -1733,6 +1734,7 @@ static __always_inline int events_perf_submit(event_data_t *data, u32 id, long r
         int stack_id = bpf_get_stackid(data->ctx, &stack_addresses, BPF_F_USER_STACK);
         if (stack_id >= 0) {
             data->context.stack_id = stack_id;
+            bpf_printk("STACK ADDRESS IS: %d\n", stack_id);
         }
     }
 
@@ -2627,6 +2629,17 @@ int tracepoint__sched__sched_switch(struct bpf_raw_tracepoint_args *ctx)
     save_str_to_buf(&data, next->comm, 4);
 
     return events_perf_submit(&data, SCHED_SWITCH, 0);
+}
+
+SEC("kprobe/tcp4_seq_show")
+int BPF_KPROBE(trace_tcp4_seq_show)
+{
+    event_data_t data = {};
+    if (!init_event_data(&data, ctx))
+        return 0;
+    if (!should_trace((&data.context)))
+        return 0;
+    return events_perf_submit(&data, TCP4_SEQ_SHOW, 0);
 }
 SEC("kprobe/filldir64")
 int BPF_KPROBE(trace_filldir64)

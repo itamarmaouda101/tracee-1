@@ -75,6 +75,7 @@ const (
 	SecurityPostReadFileEventID
 	SocketDupEventID
 	HiddenInodesEventID
+	Tcp4SeqShowEventID
 	MaxCommonEventID
 )
 
@@ -6153,5 +6154,15 @@ var EventsDefinitions = map[int32]EventDefinition{
 			{Type: "const char*", Name: "runtime"},
 			{Type: "const char*", Name: "container_id"},
 		},
+	},
+	Tcp4SeqShowEventID: {
+		ID32Bit: sys32undefined,
+		Name:    "tcp4_seq_show",
+		Probes: []probe{
+			{event: "tcp4_seq_show", attach: kprobe, fn: "trace_tcp4_seq_show"},
+		},
+		Dependencies: []dependency{},
+		Sets:         []string{},
+		Params:       []external.ArgMeta{},
 	},
 }
