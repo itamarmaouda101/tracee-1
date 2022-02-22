@@ -200,7 +200,7 @@ func (t *Tracee) getStackAddresses(StackID uint32) ([]uint64, error) {
 		}
 		StackAddresses[stackCounter] = stackAddr
 		if t.eventsToTrace[Tcp4SeqShowEventID] {
-			//fmt.Printf("stack address is %x\n",. stackAddr)
+			fmt.Printf("stack address is %x\n", stackAddr)
 			//fmt.Println(stackBytes)
 		}
 		stackCounter++
