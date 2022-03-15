@@ -191,7 +191,7 @@ Copyright (C) Aqua Security inc.
 #define SECURITY_INODE_SYMLINK          1031
 #define SOCKET_DUP                      1032
 #define HIDDEN_INODES                   1033
-#define DETECT_HOOKED_SYSCALLS          1034
+#define MAGIC_DUMP                      1034
 #define MAX_EVENT_ID                    1035
 
 #define NET_PACKET                      0
@@ -285,7 +285,7 @@ Copyright (C) Aqua Security inc.
 #define MAX_BIN_CHUNKS                  110
 #endif
 
-#define IOCTL_SYSCALL_HOOK              65        // randomly picked number for ioctl cmd
+#define MAGIC_DUMP_TRIGGER              100        // randomly picked number for ioctl cmd
 #define NUMBER_OF_SYSCALLS_X86          18
 #define NUMBER_OF_SYSCALLS_ARM          14
 
@@ -2166,39 +2166,17 @@ static __always_inline unsigned short get_inode_mode_from_fd(u64 fd)
     return READ_KERN(f_inode->i_mode);
 }
 
-static __always_inline void magic_dump(event_data_t *data){
-    int key = 1;
-    u64 *table_ptr = bpf_map_lookup_elem(&symbols_map, (void *)&key);
-    if (table_ptr == NULL){
+static __always_inline void magic_dump(event_data_t *data, unsigned int arg_num){
+    u64 *symbol = bpf_map_lookup_elem(&symbols_map, (void *)&arg_num);
+    if (symbol == NULL){
         return ;
     }
 
-    unsigned long *syscall_table_addr = (unsigned long*) *table_ptr;
-    u64 idx;
-    u64* snum_ptr;                  // pointer to syscall_number
-    u64 snum;                       // syscall_number
-    unsigned long saddr = 0;        // syscall address
-    int number_of_hooked_syscalls = 0;
-    #if defined(bpf_target_x86)
-        number_of_hooked_syscalls = NUMBER_OF_SYSCALLS_X86;
-        u64 syscall_address[NUMBER_OF_SYSCALLS_X86];
-    #elif defined(bpf_target_arm64)
-        number_of_hooked_syscalls = NUMBER_OF_SYSCALLS_ARM;
-        u64 syscall_address[NUMBER_OF_SYSCALLS_ARM];
-    #else
+    unsigned long *symbol_addr = (unsigned long*) *symbol;
 
-        return
-    #endif
-
-    __builtin_memset(syscall_address, 0, sizeof(syscall_address));
-    saddr = 0xffffffffb588d390;
-
-
-    save_bytes_to_buf(data, saddr, 0x100, 0);
-    save_to_submit_buf(data, (void*)saddr, sizeof(u64), 0);
-    int syscall_address_len = sizeof(syscall_address) / sizeof(u64);
-//    save_u64_arr_to_buf(data, (const u64 *)syscall_address, syscall_address_len, 0);
-    events_perf_submit(data, DETECT_HOOKED_SYSCALLS, 0);
+    save_to_submit_buf(data, (void*)&arg_num, sizeof(int), 0);
+    save_bytes_to_buf(data, symbol_addr, 0x100, 1);
+    events_perf_submit(data, MAGIC_DUMP, 0);
 }
 
 /*============================== SYSCALL HOOKS ===============================*/
@@ -2793,9 +2771,10 @@ int BPF_KPROBE(trace_security_file_ioctl)
         return 0;
 
     unsigned int cmd = PT_REGS_PARM2(ctx);
+    unsigned int arg_num = PT_REGS_PARM3(ctx);
 
-    if (cmd == IOCTL_SYSCALL_HOOK && get_config(CONFIG_TRACEE_PID) == data.context.host_pid){
-        magic_dump(&data);
+    if (cmd == MAGIC_DUMP_TRIGGER && get_config(CONFIG_TRACEE_PID) == data.context.host_pid){
+        magic_dump(&data, arg_num);
     }
     return 0;
 }

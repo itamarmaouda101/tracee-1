@@ -107,6 +107,8 @@ func PrepareCapture(captureSlice []string) (tracee.CaptureConfig, error) {
 		} else if cap == "profile" {
 			capture.Exec = true
 			capture.Profile = true
+		} else if strings.HasPrefix(cap, "dump=") {
+			capture.MemoryDump = append(capture.MemoryDump, strings.TrimPrefix(cap, "dump="))
 		} else {
 			return tracee.CaptureConfig{}, fmt.Errorf("invalid capture option specified, use '--capture help' for more info")
 		}

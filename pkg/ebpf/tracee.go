@@ -61,6 +61,7 @@ type CaptureConfig struct {
 	NetIfaces       []string
 	NetPerContainer bool
 	NetPerProcess   bool
+	MemoryDump      []string
 }
 
 type OutputConfig struct {
@@ -218,6 +219,9 @@ func New(cfg Config) (*Tracee, error) {
 
 	if cfg.Capture.NetIfaces != nil || cfg.Debug {
 		setEssential(SecuritySocketBindEventID)
+	}
+	if cfg.Capture.MemoryDump != nil {
+		setEssential(MagicDumpEventID)
 	}
 
 	// Tracee bpf code uses monotonic clock as event timestamp.
@@ -706,15 +710,29 @@ func (t *Tracee) populateBPFMaps() error {
 			 * [sys_call_table symbol address][syscall num #1][syscall num #2][syscall num #3]...
 			 * with that, we can fetch the syscall address by accessing the syscall table in the syscall number index
 			 */
-			var symbolsList = []string{"sys_call_table", "module_list"}
 			key := int(1)
-			for idx, val := range symbolsList {
-				key = idx + 2
-				sym, err := t.kernelSymbols.GetSymbolByName("system", val)
-				if err != nil {
-					fmt.Println(err.Error())
+			for idx, sym := range t.config.Capture.MemoryDump {
+				key = idx
+				var addr uint64
+				if strings.HasPrefix(sym, "0x") {
+					addr, err = strconv.ParseUint(strings.TrimPrefix(sym, "0x"), 16, 64)
+					if err != nil {
+						return err
+					}
+				} else {
+					symbolOwner := "system"
+					symbolName := sym
+					if strings.Contains(sym, "@") && (len(sym) > strings.LastIndex(sym, "@")+1) {
+						symbolOwner = sym[strings.LastIndex(sym, "@")+1:]
+						symbolName = sym[:strings.LastIndex(sym, "@")]
+					}
+					askedSymbol, err := t.kernelSymbols.GetSymbolByName(symbolOwner, symbolName)
+					if err != nil {
+						return fmt.Errorf("couldn't find symbol %v:, %v", symbolName, err)
+					}
+					addr = askedSymbol.Address
 				}
-				errs = append(errs, symbolsMap.Update(unsafe.Pointer(&(key)), unsafe.Pointer(&sym.Address)))
+				errs = append(errs, symbolsMap.Update(unsafe.Pointer(&key), unsafe.Pointer(&addr)))
 			}
 			for _, err := range errs {
 				if err != nil {
@@ -1165,16 +1183,19 @@ func (t *Tracee) invokeInitEvents() {
 	}
 }
 
-const IoctlSyscallHook int = 65 // randomly picked number for ioctl cmd
+const MagicDumpTrigger int = 100 // randomly picked number for ioctl cmd
 
 func (t *Tracee) invokeIoctlTriggeredEvents() {
-	// invoke DetectHookedSyscallsEvent
-	if t.eventsToTrace[MagicDumpEventID] {
+	if t.config.Capture.MemoryDump != nil {
 		ptmx, err := os.OpenFile(t.config.Capture.OutputPath, os.O_RDONLY, 444)
 		if err != nil {
 			return
 		}
-		syscall.Syscall(syscall.SYS_IOCTL, ptmx.Fd(), uintptr(IoctlSyscallHook), 0)
+		//for every address/symbol that we will want to dump we will send IOCTL
+		// with the MagicDumpTrigger cmd and the key of the symbol address in the map
+		for idx, _ := range t.config.Capture.MemoryDump {
+			syscall.Syscall(syscall.SYS_IOCTL, ptmx.Fd(), uintptr(MagicDumpTrigger), uintptr(idx))
+		}
 		ptmx.Close()
 	}
 }

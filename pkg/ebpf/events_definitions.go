@@ -6188,8 +6188,9 @@ var EventsDefinitions = map[int32]EventDefinition{
 		},
 		Sets: []string{},
 		Params: []trace.ArgMeta{
-			{Type: "string", Name: "os_arch"},
+			{Type: "int", Name: "symbol_address"},
 			{Type: "bytes", Name: "bytecode"},
+			{Type: "string", Name: "os_arch"},
 		},
 	},
 }
