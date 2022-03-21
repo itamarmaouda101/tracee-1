@@ -335,7 +335,7 @@ func (t *Tracee) processEvent(event *trace.Event) error {
 		}
 		t.containers.CgroupRemove(cgroupId, hId)
 
-	case MagicDumpEventID:
+	case KernelAddressBytecodeEventID:
 		symNumber, err := getEventArgInt32Val(event, "symbol_address")
 		if err != nil {
 			return fmt.Errorf("error parsing magic_dump args: %v", err)
@@ -343,7 +343,7 @@ func (t *Tracee) processEvent(event *trace.Event) error {
 		}
 		event.Args[0] = trace.Argument{
 			ArgMeta: trace.ArgMeta{Name: "symbol", Type: "const char*"},
-			Value:   t.config.Capture.MemoryDump[symNumber],
+			Value:   t.config.Capture.MemoryDump.Address[symNumber],
 		}
 		event.Args = append(event.Args, trace.Argument{
 			ArgMeta: trace.ArgMeta{Name: "os_arch", Type: "const char*"},

@@ -107,8 +107,11 @@ func PrepareCapture(captureSlice []string) (tracee.CaptureConfig, error) {
 		} else if cap == "profile" {
 			capture.Exec = true
 			capture.Profile = true
-		} else if strings.HasPrefix(cap, "dump=") {
-			capture.MemoryDump = append(capture.MemoryDump, strings.TrimPrefix(cap, "dump="))
+		} else if strings.HasPrefix(cap, "symbol=") {
+			capture.MemoryDump.Address = append(capture.MemoryDump.Address, strings.TrimPrefix(cap, "symbol="))
+			capture.MemoryDump.IsSym = append(capture.MemoryDump.IsSym, true)
+		} else if strings.HasPrefix(cap, "address=") {
+			capture.MemoryDump.Address = append(capture.MemoryDump.Address, strings.TrimPrefix(cap, "address="))
 		} else {
 			return tracee.CaptureConfig{}, fmt.Errorf("invalid capture option specified, use '--capture help' for more info")
 		}

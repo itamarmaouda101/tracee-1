@@ -61,7 +61,12 @@ type CaptureConfig struct {
 	NetIfaces       []string
 	NetPerContainer bool
 	NetPerProcess   bool
-	MemoryDump      []string
+	MemoryDump      memDump
+}
+
+type memDump struct {
+	Address []string
+	IsSym   []bool // each element in the address array has element in isSym array to specify if its asked as symbol or address
 }
 
 type OutputConfig struct {
@@ -220,8 +225,8 @@ func New(cfg Config) (*Tracee, error) {
 	if cfg.Capture.NetIfaces != nil || cfg.Debug {
 		setEssential(SecuritySocketBindEventID)
 	}
-	if cfg.Capture.MemoryDump != nil {
-		setEssential(MagicDumpEventID)
+	if cfg.Capture.MemoryDump.Address != nil {
+		setEssential(KernelAddressBytecodeEventID)
 	}
 
 	// Tracee bpf code uses monotonic clock as event timestamp.
@@ -701,7 +706,7 @@ func (t *Tracee) populateBPFMaps() error {
 				return err
 			}
 		}
-		if e == MagicDumpEventID {
+		if e == KernelAddressBytecodeEventID {
 			symbolsMap, err := t.bpfModule.GetMap("symbols_map")
 			if err != nil {
 				return err
@@ -711,10 +716,10 @@ func (t *Tracee) populateBPFMaps() error {
 			 * with that, we can fetch the syscall address by accessing the syscall table in the syscall number index
 			 */
 			key := int(1)
-			for idx, sym := range t.config.Capture.MemoryDump {
+			for idx, sym := range t.config.Capture.MemoryDump.Address {
 				key = idx
 				var addr uint64
-				if strings.HasPrefix(sym, "0x") {
+				if !t.config.Capture.MemoryDump.IsSym[idx] {
 					addr, err = strconv.ParseUint(strings.TrimPrefix(sym, "0x"), 16, 64)
 					if err != nil {
 						return err
@@ -1186,14 +1191,14 @@ func (t *Tracee) invokeInitEvents() {
 const MagicDumpTrigger int = 100 // randomly picked number for ioctl cmd
 
 func (t *Tracee) invokeIoctlTriggeredEvents() {
-	if t.config.Capture.MemoryDump != nil {
+	if t.config.Capture.MemoryDump.Address != nil {
 		ptmx, err := os.OpenFile(t.config.Capture.OutputPath, os.O_RDONLY, 444)
 		if err != nil {
 			return
 		}
 		//for every address/symbol that we will want to dump we will send IOCTL
 		// with the MagicDumpTrigger cmd and the key of the symbol address in the map
-		for idx, _ := range t.config.Capture.MemoryDump {
+		for idx, _ := range t.config.Capture.MemoryDump.Address {
 			syscall.Syscall(syscall.SYS_IOCTL, ptmx.Fd(), uintptr(MagicDumpTrigger), uintptr(idx))
 		}
 		ptmx.Close()

@@ -74,7 +74,7 @@ const (
 	SecurityInodeSymlinkEventId
 	SocketDupEventID
 	HiddenInodesEventID
-	MagicDumpEventID
+	KernelAddressBytecodeEventID
 	MaxCommonEventID
 )
 
@@ -84,6 +84,8 @@ const (
 	ContainerCreateEventID
 	ContainerRemoveEventID
 	ExistingContainerEventID
+	KernelFunctionBytecodeEventID
+	KernelSymbolBytecodeEventID
 	MaxUserSpaceEventID
 )
 
@@ -6180,13 +6182,39 @@ var EventsDefinitions = map[int32]EventDefinition{
 			{Type: "unsigned long", Name: "ctime"},
 		},
 	},
-	MagicDumpEventID: {
+	KernelAddressBytecodeEventID: {
 		ID32Bit: sys32undefined,
-		Name:    "magic_dump",
+		Name:    "kernel_address_bytecode",
 		Probes: []probe{
 			{event: "security_file_ioctl", attach: kprobe, fn: "trace_security_file_ioctl"},
 		},
 		Sets: []string{},
+		Params: []trace.ArgMeta{
+			{Type: "int", Name: "symbol_address"},
+			{Type: "bytes", Name: "bytecode"},
+			{Type: "string", Name: "os_arch"},
+		},
+	},
+	KernelFunctionBytecodeEventID: {
+		ID32Bit: sys32undefined,
+		Name:    "kernel_function_bytecode",
+		Sets:    []string{},
+		Dependencies: []dependency{
+			{eventID: KernelAddressBytecodeEventID},
+		},
+		Params: []trace.ArgMeta{
+			{Type: "int", Name: "symbol_address"},
+			{Type: "bytes", Name: "bytecode"},
+			{Type: "string", Name: "os_arch"},
+		},
+	},
+	KernelSymbolBytecodeEventID: {
+		ID32Bit: sys32undefined,
+		Name:    "kernel_symbol_bytecode",
+		Sets:    []string{},
+		Dependencies: []dependency{
+			{eventID: KernelAddressBytecodeEventID},
+		},
 		Params: []trace.ArgMeta{
 			{Type: "int", Name: "symbol_address"},
 			{Type: "bytes", Name: "bytecode"},
