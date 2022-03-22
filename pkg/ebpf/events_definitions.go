@@ -6195,9 +6195,9 @@ var EventsDefinitions = map[int32]EventDefinition{
 		},
 	},
 	HiddenSocketsEventID: {
-		ID32Bit:      sys32undefined,
-		Name:         "hidden_sockets",
-		Probes:       []probe{{event: "security_file_ioctl", attach: kprobe, fn: "trace_security_file_ioctl"}},
+		ID32Bit: sys32undefined,
+		Name:    "hidden_sockets",
+		//Probes:       []probe{{event: "security_file_ioctl", attach: kprobe, fn: "trace_security_file_ioctl"}},
 		Dependencies: []dependency{},
 		Sets:         []string{},
 		Params: []external.ArgMeta{

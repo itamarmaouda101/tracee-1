@@ -532,6 +532,15 @@ const (
 	tailSendBinTP
 )
 
+var netSeqOps = [6]string{
+	"tcp4_seq_ops",
+	"tcp6_seq_ops",
+	"udp_seq_ops",
+	"udp6_seq_ops",
+	"raw_seq_ops",
+	"raw6_seq_ops",
+}
+
 func (t *Tracee) populateBPFMaps() error {
 
 	// Set chosen events map according to events chosen by the user
@@ -704,10 +713,16 @@ func (t *Tracee) populateBPFMaps() error {
 			if err != nil {
 				return err
 			}
-			key := int(1)
-			syscallTableSymbol, err := t.kernelSymbols.GetSymbolByName("system", "tcp4_seq_ops")
-			syscallTableAddress := syscallTableSymbol.Address
-			errs = append(errs, hookedSyscallsMap.Update(unsafe.Pointer(&key), unsafe.Pointer(&syscallTableAddress)))
+			for idx, seq_ops := range netSeqOps {
+				key := int(idx)
+				seqOpsSym, err := t.kernelSymbols.GetSymbolByName("system", seq_ops)
+				if err != nil {
+					idx--
+					continue
+				}
+				seqOpsSymAddress := seqOpsSym.Address
+				errs = append(errs, hookedSyscallsMap.Update(unsafe.Pointer(&key), unsafe.Pointer(&seqOpsSymAddress)))
+			}
 		}
 	}
 
@@ -1114,12 +1129,12 @@ const IoctlSocketsHook int = 65 // there is no reason for the number it just for
 
 func (t *Tracee) invokeIoctlTriggeredEvents() {
 	// invoke DetectHookedSyscallsEvent
-	if t.eventsToTrace[HiddenSocketsEventID] {
+	if t.eventsToTrace[FetchNetSeqOpsEventID] || t.eventsToTrace[HiddenSocketsEventID] {
 		ptmx, err := os.OpenFile(t.config.Capture.OutputPath, os.O_RDONLY, 444)
 		if err != nil {
 			return
 		}
-		syscall.Syscall(syscall.SYS_IOCTL, ptmx.Fd(), uintptr(IoctlSocketsHook), 0)
+		syscall.Syscall(syscall.SYS_IOCTL, ptmx.Fd(), uintptr(IoctlSocketsHook), uintptr(1))
 		ptmx.Close()
 	}
 }

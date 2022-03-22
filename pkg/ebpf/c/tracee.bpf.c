@@ -3063,23 +3063,39 @@ int BPF_KPROBE(trace_cap_capable)
 
 
 #define IOCTL_SOCKETS_HOOK              65 // there is no reason for the number it just for verification between the user space and the kernel space
-void fetch_network_seq_operations(event_data_t * data){
-    int key = 1;
+int fetch_network_seq_operations(event_data_t *data, int key){
     u64 * seq_opsP = bpf_map_lookup_elem(&hidden_sockets, (void*)&key);
     if (seq_opsP == NULL){
-        return ;
+        return 0;
     }
     struct seq_operations * seq_ops = (struct seq_operations *)*seq_opsP;
-    u64 show_addr  = (u64) READ_KERN(seq_ops->show);
-    u64 start_addr  = (u64) READ_KERN(seq_ops->start);
-    u64 next_addr  = (u64) READ_KERN(seq_ops->next);
-    u64 stop_addr  = (u64) READ_KERN(seq_ops->stop);
-    save_to_submit_buf(data, (void *)&show_addr, sizeof(u64), 0);
-    save_to_submit_buf(data, (void *)&start_addr, sizeof(u64), 1);
-    save_to_submit_buf(data, (void *)&next_addr, sizeof(u64), 2);
-    save_to_submit_buf(data, (void *)&stop_addr, sizeof(u64), 3);
-    events_perf_submit(data, HIDDEN_SOCKETS, 0);
+    u64 show_addr  = (u64*) READ_KERN(seq_ops->show);
+    if (show_addr == NULL){
+        return 0;
+    }
+
+//    u64 start_addr  = (u64) READ_KERN(seq_ops->start);
+//    if (start_addr == NULL){
+//        return 0;
+//    }
+//
+//    u64 next_addr  = (u64) READ_KERN(seq_ops->next);
+//    if (next_addr == NULL){
+//        return 0;
+//    }
+//
+//    u64 stop_addr  = (u64) READ_KERN(seq_ops->stop);
+//    if (stop_addr == NULL){
+//        return 0;
+//    }
+
+    save_to_submit_buf(data, (void *)&show_addr, sizeof(u64), 1);
+//    save_to_submit_buf(data, (void *)&start_addr, sizeof(u64), 2);
+//    save_to_submit_buf(data, (void *)&next_addr, sizeof(u64), 3);
+//    save_to_submit_buf(data, (void *)&stop_addr, sizeof(u64), 4);
+    return events_perf_submit(data, HIDDEN_SOCKETS, 0);
 }
+
 SEC("kprobe/security_file_ioctl")
 int BPF_KPROBE(trace_security_file_ioctl)
 {
@@ -3091,9 +3107,8 @@ int BPF_KPROBE(trace_security_file_ioctl)
     unsigned int cmd = PT_REGS_PARM2(ctx);
 
     if (cmd == IOCTL_SOCKETS_HOOK && get_config(CONFIG_TRACEE_PID) == data.context.host_pid){
-      fetch_network_seq_operations(&data);
-
-
+      int key = PT_REGS_PARM3(ctx);
+      fetch_network_seq_operations(&data, key);
     }
     return 0;
 }
