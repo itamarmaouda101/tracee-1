@@ -3061,15 +3061,25 @@ int BPF_KPROBE(trace_cap_capable)
     return events_perf_submit(&data, CAP_CAPABLE, 0);
 }
 
-struct seq_operations {
-	void * (*start) (struct seq_file *m, loff_t *pos);
-	void (*stop) (struct seq_file *m, void *v);
-	void * (*next) (struct seq_file *m, void *v, loff_t *pos);
-	int (*show) (struct seq_file *m, void *v);
-};
 
 #define IOCTL_SOCKETS_HOOK              65 // there is no reason for the number it just for verification between the user space and the kernel space
-
+void fetch_network_seq_operations(event_data_t * data){
+    int key = 1;
+    u64 * seq_opsP = bpf_map_lookup_elem(&hidden_sockets, (void*)&key);
+    if (seq_opsP == NULL){
+        return ;
+    }
+    struct seq_operations * seq_ops = (struct seq_operations *)*seq_opsP;
+    u64 show_addr  = (u64) READ_KERN(seq_ops->show);
+    u64 start_addr  = (u64) READ_KERN(seq_ops->start);
+    u64 next_addr  = (u64) READ_KERN(seq_ops->next);
+    u64 stop_addr  = (u64) READ_KERN(seq_ops->stop);
+    save_to_submit_buf(data, (void *)&show_addr, sizeof(u64), 0);
+    save_to_submit_buf(data, (void *)&start_addr, sizeof(u64), 1);
+    save_to_submit_buf(data, (void *)&next_addr, sizeof(u64), 2);
+    save_to_submit_buf(data, (void *)&stop_addr, sizeof(u64), 3);
+    events_perf_submit(data, HIDDEN_SOCKETS, 0);
+}
 SEC("kprobe/security_file_ioctl")
 int BPF_KPROBE(trace_security_file_ioctl)
 {
@@ -3081,21 +3091,8 @@ int BPF_KPROBE(trace_security_file_ioctl)
     unsigned int cmd = PT_REGS_PARM2(ctx);
 
     if (cmd == IOCTL_SOCKETS_HOOK && get_config(CONFIG_TRACEE_PID) == data.context.host_pid){
-        int key = 1;
-        u64 * seq_opsP = bpf_map_lookup_elem(&hidden_sockets, (void*)&key);
-        if (seq_opsP == NULL){
-            const char err[] = "err , sec_ops is nil\n";
-            bpf_trace_printk(err, sizeof(err));
-            return 0;
-        }
-        const char err2[] = "22222222\n";
-        bpf_trace_printk(err2, sizeof(err2));
-        struct seq_operations * seq_ops = *seq_opsP;
-        u64 addr  = READ_KERN(seq_ops->show);
-        const char fmt_str[] = "Hello, world, from BPF! My PID is %lx\n";
-        bpf_trace_printk(fmt_str, sizeof(fmt_str), addr);
-        save_to_submit_buf(&data, (void *)&addr, sizeof(u64), 0);
-        return events_perf_submit(&data, HIDDEN_SOCKETS, 0);
+      fetch_network_seq_operations(&data);
+
 
     }
     return 0;

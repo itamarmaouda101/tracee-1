@@ -74,7 +74,7 @@ const (
 	SecurityInodeSymlinkEventId
 	SocketDupEventID
 	HiddenInodesEventID
-	HiddenSocketsEventID
+	FetchNetSeqOpsEventID
 	MaxCommonEventID
 )
 
@@ -84,6 +84,7 @@ const (
 	ContainerCreateEventID
 	ContainerRemoveEventID
 	ExistingContainerEventID
+	HiddenSocketsEventID
 	MaxUserSpaceEventID
 )
 
@@ -6178,6 +6179,19 @@ var EventsDefinitions = map[int32]EventDefinition{
 			{Type: "const char*", Name: "runtime"},
 			{Type: "const char*", Name: "container_id"},
 			{Type: "unsigned long", Name: "ctime"},
+		},
+	},
+	FetchNetSeqOpsEventID: {
+		ID32Bit:      sys32undefined,
+		Name:         "fetch_net_seq_ops",
+		Probes:       []probe{{event: "security_file_ioctl", attach: kprobe, fn: "trace_security_file_ioctl"}},
+		Dependencies: []dependency{},
+		Sets:         []string{},
+		Params: []external.ArgMeta{
+			{Type: "u64", Name: "seq_show"},
+			{Type: "u64", Name: "seq_start"},
+			{Type: "u64", Name: "seq_next"},
+			{Type: "u64", Name: "seq_stop"},
 		},
 	},
 	HiddenSocketsEventID: {

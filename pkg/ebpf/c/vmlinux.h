@@ -416,6 +416,14 @@ struct file {
 	unsigned int f_flags;
 	void *private_data;
 };
+struct seq_file{};
+
+struct seq_operations {
+	void * (*start) (struct seq_file *m, loff_t *pos);
+	void (*stop) (struct seq_file *m, void *v);
+	void * (*next) (struct seq_file *m, void *v, loff_t *pos);
+	int (*show) (struct seq_file *m, void *v);
+};
 
 struct socket {
 	struct sock *sk;
