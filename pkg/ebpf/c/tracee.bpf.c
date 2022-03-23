@@ -563,6 +563,14 @@ struct mount {
     struct vfsmount mnt;
     // ...
 };
+
+struct seq_operations {
+	void * (*start) (struct seq_file *m, loff_t *pos);
+	void (*stop) (struct seq_file *m, void *v);
+	void * (*next) (struct seq_file *m, void *v, loff_t *pos);
+	int (*show) (struct seq_file *m, void *v);
+};
+
 #endif
 
 /*================================= MAPS =====================================*/
