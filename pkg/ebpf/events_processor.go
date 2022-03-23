@@ -334,18 +334,25 @@ func (t *Tracee) processEvent(event *trace.Event) error {
 		}
 		t.containers.CgroupRemove(cgroupId, hId)
 	case FetchNetSeqOpsEventID:
-		tcp4SeqShowAddr, err := getEventArgUint64Val(event, "seq_show")
+		SeqOpsAddr, err := getEventArgUint64Val(event, "seq_ops_name")
 		if err != nil {
 			return fmt.Errorf("error parsing HiddenSockets args: %v", err)
 		}
-		inTextSegment, err := t.kernelSymbols.IsInTextSegment(tcp4SeqShowAddr)
+		sym, err := t.kernelSymbols.GetSymbolByAddr(SeqOpsAddr)
 		if err != nil {
-			return err
+			return fmt.Errorf("error geeting seq_ops symbol: %v", err)
 		}
-		if !inTextSegment {
-			sym, _ := t.kernelSymbols.GetSymbolByAddr(tcp4SeqShowAddr)
-			fmt.Println("tcp4 hooked by:", sym.Owner)
-		}
+		fmt.Println("seq_ops is ", sym.Name)
+		event.Args[0].Value = sym.Name
+		event.Args[0].Type = "char *"
+		//inTextSegment, err := t.kernelSymbols.IsInTextSegment(SeqOpsAddr)
+		//if err != nil {
+		//	return err
+		//}
+		//if !inTextSegment {
+		//	sym, _ := t.kernelSymbols.GetSymbolByAddr(tcp4SeqShowAddr)
+		//	fmt.Println("tcp4 hooked by:", sym.Owner)
+		//}
 	}
 
 	return nil

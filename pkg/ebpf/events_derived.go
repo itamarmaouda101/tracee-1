@@ -69,6 +69,39 @@ func (t *Tracee) deriveEvent(event trace.Event) []trace.Event {
 		deriveFns = map[int32]deriveFn{
 			ContainerRemoveEventID: containerRemoveFn,
 		}
+	case FetchNetSeqOpsEventID:
+		hiddenSocketsFn := func(def EventDefinition) error {
+			//cgroupId, err := getEventArgStringVal(&event, "seq_ops_name")
+			//if err != nil {
+			//	return err
+			//}
+			seqShow, err := getEventArgUint64Val(&event, "seq_show")
+			if err != nil {
+				return err
+			}
+			//seqStart, err := getEventArgStringVal(&event, "seq_start")
+			//if err != nil {
+			//	return err
+			//}
+			inTextSegment, err := t.kernelSymbols.IsInTextSegment(seqShow)
+			if !inTextSegment {
+				de := event
+				de.EventID = int(HiddenSocketsEventID)
+				de.EventName = "hidden_sockets"
+				de.ReturnValue = 0
+				de.StackAddresses = make([]uint64, 1)
+				de.Args = []external.Argument{}
+				de.ArgsNum = 0
+
+				derivatives = append(derivatives, de)
+				fmt.Println("hokkkkk")
+			}
+
+			return nil
+		}
+		deriveFns = map[int32]deriveFn{
+			HiddenSocketsEventID: hiddenSocketsFn,
+		}
 	}
 
 	for id, deriveFn := range deriveFns {

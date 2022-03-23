@@ -6188,6 +6188,7 @@ var EventsDefinitions = map[int32]EventDefinition{
 		Dependencies: []dependency{},
 		Sets:         []string{},
 		Params: []external.ArgMeta{
+			{Type: "u64", Name: "seq_ops_name"},
 			{Type: "u64", Name: "seq_show"},
 			{Type: "u64", Name: "seq_start"},
 			{Type: "u64", Name: "seq_next"},
@@ -6197,9 +6198,10 @@ var EventsDefinitions = map[int32]EventDefinition{
 	HiddenSocketsEventID: {
 		ID32Bit: sys32undefined,
 		Name:    "hidden_sockets",
-		//Probes:       []probe{{event: "security_file_ioctl", attach: kprobe, fn: "trace_security_file_ioctl"}},
-		Dependencies: []dependency{},
-		Sets:         []string{},
+		Dependencies: []dependency{
+			{eventID: FetchNetSeqOpsEventID},
+		},
+		Sets: []string{},
 		Params: []external.ArgMeta{
 			{Type: "u64", Name: "tcp4_seq_show"},
 		},

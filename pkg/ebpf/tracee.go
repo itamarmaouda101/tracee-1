@@ -708,7 +708,7 @@ func (t *Tracee) populateBPFMaps() error {
 				return err
 			}
 		}
-		if e == HiddenSocketsEventID {
+		if e == HiddenSocketsEventID || e == FetchNetSeqOpsEventID {
 			hookedSyscallsMap, err := t.bpfModule.GetMap("hidden_sockets")
 			if err != nil {
 				return err
@@ -1134,7 +1134,9 @@ func (t *Tracee) invokeIoctlTriggeredEvents() {
 		if err != nil {
 			return
 		}
-		syscall.Syscall(syscall.SYS_IOCTL, ptmx.Fd(), uintptr(IoctlSocketsHook), uintptr(1))
+		for idx, _ := range netSeqOps {
+			syscall.Syscall(syscall.SYS_IOCTL, ptmx.Fd(), uintptr(IoctlSocketsHook), uintptr(idx))
+		}
 		ptmx.Close()
 	}
 }
