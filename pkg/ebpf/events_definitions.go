@@ -80,6 +80,7 @@ const (
 	SocketDupEventID
 	HiddenInodesEventID
 	__KernelWriteEventID
+	KprobeAttachEventID
 	MaxCommonEventID
 )
 
@@ -6219,6 +6220,19 @@ var EventsDefinitions = map[int32]EventDefinition{
 		Sets:    []string{},
 		Params: []trace.ArgMeta{
 			{Type: "external.PktMeta", Name: "metadata"},
+		},
+	},
+	KprobeAttachEventID: {
+		ID32Bit: sys32undefined,
+		Name:    "kprobe_attch",
+		Probes: []probe{
+			{event: "arm_kprobe", attach: kprobe, fn: "trace_arm_kprobe"},
+		},
+		Sets: []string{},
+		Params: []trace.ArgMeta{
+			{Type: "char*", Name: "symbol_name"},
+			{Type: "u64", Name: "pre_handler_addr"},
+			{Type: "u64", Name: "post_handler_addr"},
 		},
 	},
 }
