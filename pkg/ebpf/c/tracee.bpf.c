@@ -190,7 +190,8 @@ Copyright (C) Aqua Security inc.
 #define SECURITY_INODE_SYMLINK          1031
 #define SOCKET_DUP                      1032
 #define HIDDEN_INODES                   1033
-#define MAX_EVENT_ID                    1034
+#define KPROBE_ATTACH                   1034
+#define MAX_EVENT_ID                    1035
 
 #define NET_PACKET                      0
 #define DEBUG_NET_SECURITY_BIND         1
@@ -4111,6 +4112,26 @@ int BPF_KPROBE(trace_security_bpf)
     save_to_submit_buf(&data, (void *)&cmd, sizeof(int), 0);
 
     return events_perf_submit(&data, SECURITY_BPF, 0);
+}
+
+SEC("kprobe/arm_kprobe")
+int BPF_KPROBE(trace_arm_kprobe)
+{
+    event_data_t data = {};
+    if (!init_event_data(&data, ctx))
+        return 0;
+
+    if (!should_trace(&data.context))
+        return 0;
+
+    struct kprobe *kp = (struct kprobe *)PT_REGS_PARM1(ctx);
+    char * symbol_name = (char *)READ_KERN(kp->symbol_name);
+    u64 pre_handler = (u64)READ_KERN(kp->pre_handler);
+    u64 post_handler = (u64)READ_KERN(kp->post_handler);
+    save_str_to_buf(&data, (void *)symbol_name, 0);
+    save_to_submit_buf(&data, (void *)&pre_handler, sizeof(u64), 1);
+    save_to_submit_buf(&data, (void *)&post_handler, sizeof(u64), 2);
+    return events_perf_submit(&data, KPROBE_ATTACH, 0);
 }
 
 SEC("kprobe/security_bpf_map")

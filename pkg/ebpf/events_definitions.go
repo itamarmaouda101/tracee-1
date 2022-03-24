@@ -74,6 +74,7 @@ const (
 	SecurityInodeSymlinkEventId
 	SocketDupEventID
 	HiddenInodesEventID
+	KprobeAttachEventID
 	MaxCommonEventID
 )
 
@@ -6177,6 +6178,19 @@ var EventsDefinitions = map[int32]EventDefinition{
 			{Type: "const char*", Name: "runtime"},
 			{Type: "const char*", Name: "container_id"},
 			{Type: "unsigned long", Name: "ctime"},
+		},
+	},
+	KprobeAttachEventID: {
+		ID32Bit: sys32undefined,
+		Name:    "kprobe_attch",
+		Probes: []probe{
+			{event: "arm_kprobe", attach: kprobe, fn: "trace_arm_kprobe"},
+		},
+		Sets: []string{},
+		Params: []trace.ArgMeta{
+			{Type: "char*", Name: "symbol_name"},
+			{Type: "u64", Name: "pre_handler_addr"},
+			{Type: "u64", Name: "post_handler_addr"},
 		},
 	},
 }
