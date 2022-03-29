@@ -190,7 +190,9 @@ Copyright (C) Aqua Security inc.
 #define SECURITY_INODE_SYMLINK          1031
 #define SOCKET_DUP                      1032
 #define HIDDEN_INODES                   1033
-#define MAX_EVENT_ID                    1034
+#define DEBUGFS_CREATE_DIR              1034
+#define DEBUGFS_CREATE_FILE             1035
+#define MAX_EVENT_ID                    1036
 
 #define NET_PACKET                      0
 #define DEBUG_NET_SECURITY_BIND         1
@@ -3102,6 +3104,56 @@ int BPF_KPROBE(trace_security_inode_symlink)
     save_str_to_buf(&data, (void *)old_name, 1);
 
     return events_perf_submit(&data, SECURITY_INODE_SYMLINK, 0);
+}
+
+SEC("kprobe/debugfs_create_dir")
+int BPF_KPROBE(trace_debugfs_create_dir)
+{
+    event_data_t data = {};
+    if (!init_event_data(&data, ctx))
+        return 0;
+
+    if (!should_trace(&data.context))
+        return 0;
+
+    const char *dir_name = (const char *)PT_REGS_PARM1(ctx);
+    struct dentry *dentry = (struct dentry *)PT_REGS_PARM2(ctx);
+
+    save_str_to_buf(&data, (void *)dir_name, 0);
+
+    if (dentry != NULL){
+        void *dentry_path = get_dentry_path_str(dentry);
+        save_str_to_buf(&data, dentry_path, 1);
+    }
+
+    return events_perf_submit(&data, DEBUGFS_CREATE_DIR, 0);
+}
+
+SEC("kprobe/debugfs_create_file")
+int BPF_KPROBE(trace_debugfs_create_file)
+{
+    event_data_t data = {};
+    if (!init_event_data(&data, ctx))
+        return 0;
+
+    if (!should_trace(&data.context))
+        return 0;
+
+    const char *dir_name = (const char *)PT_REGS_PARM1(ctx);
+    mode_t permissions = (mode_t)PT_REGS_PARM2(ctx);
+    struct dentry *dentry = (struct dentry *)PT_REGS_PARM3(ctx);
+    unsigned long file_fops_addr = (unsigned long)PT_REGS_PARM5(ctx);
+
+    save_str_to_buf(&data, (void *)dir_name, 0);
+    save_to_submit_buf(&data, (void *)&permissions, sizeof(mode_t), 1);
+
+    if (dentry != NULL){
+        void *dentry_path = get_dentry_path_str(dentry);
+        save_str_to_buf(&data, dentry_path, 2);
+    }
+    save_to_submit_buf(&data, (void *)&file_fops_addr, sizeof(unsigned long), 3);
+
+    return events_perf_submit(&data, DEBUGFS_CREATE_FILE, 0);
 }
 
 SEC("kprobe/security_socket_listen")

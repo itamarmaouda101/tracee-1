@@ -74,6 +74,8 @@ const (
 	SecurityInodeSymlinkEventId
 	SocketDupEventID
 	HiddenInodesEventID
+	DebugfsCreateDirEventID
+	DebugfsCreateFileEventID
 	MaxCommonEventID
 )
 
@@ -6177,6 +6179,32 @@ var EventsDefinitions = map[int32]EventDefinition{
 			{Type: "const char*", Name: "runtime"},
 			{Type: "const char*", Name: "container_id"},
 			{Type: "unsigned long", Name: "ctime"},
+		},
+	},
+	DebugfsCreateDirEventID: {
+		ID32Bit: sys32undefined,
+		Name:    "debugfs_create_dir",
+		Probes: []probe{
+			{event: "debugfs_create_dir", attach: kprobe, fn: "trace_debugfs_create_dir"},
+		},
+		Sets: []string{},
+		Params: []trace.ArgMeta{
+			{Type: "char*", Name: "dir_name"},
+			{Type: "char*", Name: "parent_dentry_name"},
+		},
+	},
+	DebugfsCreateFileEventID: {
+		ID32Bit: sys32undefined,
+		Name:    "debugfs_create_file",
+		Probes: []probe{
+			{event: "debugfs_create_file", attach: kprobe, fn: "trace_debugfs_create_file"},
+		},
+		Sets: []string{},
+		Params: []trace.ArgMeta{
+			{Type: "char*", Name: "file_name"},
+			{Type: "mode_t", Name: "permissions"},
+			{Type: "char*", Name: "parent_dentry_name"},
+			{Type: "u64", Name: "fops_addr"},
 		},
 	},
 }
